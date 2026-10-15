@@ -91,7 +91,7 @@ internal sealed class TrayApp : IDisposable
     private void BuildMenu()
     {
         var menu = new Forms.ContextMenuStrip();
-        menu.Items.Add("MailSprite 0.1 - Preview").Enabled = false;
+        menu.Items.Add("MailSprite 0.2 - Preview").Enabled = false;
         menu.Items.Add(new Forms.ToolStripSeparator());
         menu.Items.Add("Test: Waving Butler", null, (_, _) => ShowSprite("Butler"));
         menu.Items.Add("Test: Flying Envelope", null, (_, _) => ShowSprite("Envelope"));
@@ -137,6 +137,7 @@ internal sealed class TrayApp : IDisposable
             SaveAndRefresh();
         }) { Checked = _settings.WatchMailbird });
 
+        menu.Items.Add("Copy Mailbird diagnostic report", null, (_, _) => CopyDiagnostics());
         menu.Items.Add(new Forms.ToolStripMenuItem("Start with Windows", null, (_, _) =>
         {
             bool newValue = !_settings.StartWithWindows;
@@ -149,8 +150,8 @@ internal sealed class TrayApp : IDisposable
 
         menu.Items.Add("About / detection limitations", null, (_, _) =>
             System.Windows.MessageBox.Show(
-                "MailSprite 0.1\n\nTest Butler and Test Envelope work without email access.\n\n" +
-                "Mailbird detection is an EXPERIMENTAL accessibility-based watcher for new pop-up windows. " +
+                "MailSprite 0.2\n\nTest Butler and Test Envelope work without email access.\n\n" +
+                "Mailbird detection is EXPERIMENTAL and observes Windows popup/show events. " +
                 "It cannot reliably observe every type of Windows notification. " +
                 "It may miss some new emails or occasionally trigger on unrelated Mailbird windows.\n\n" +
                 "MailSprite does not read messages, connect to Gmail/Outlook, or request passwords.",
@@ -230,6 +231,26 @@ internal sealed class TrayApp : IDisposable
             _settings.Save();
             _icon.ShowBalloonTip(5000, "MailSprite", "Mailbird watcher could not start: " + ex.Message,
                 Forms.ToolTipIcon.Warning);
+        }
+    }
+
+    private void CopyDiagnostics()
+    {
+        try
+        {
+            string report = _watcher?.GetDiagnosticReport() ??
+                "MailSprite detector is OFF. Right-click the tray icon and enable " +
+                "'Experimental: watch Mailbird pop-ups' before sending a test email.";
+            System.Windows.Clipboard.SetText(report);
+            System.Windows.MessageBox.Show(
+                "Diagnostic report copied to your clipboard. Paste it into our chat after " +
+                "a test email arrives. MailSprite does not record your email subjects or senders.",
+                "MailSprite Diagnostics");
+        }
+        catch (Exception ex)
+        {
+            System.Windows.MessageBox.Show("Unable to copy diagnostic report: " + ex.Message,
+                "MailSprite Diagnostics");
         }
     }
 
