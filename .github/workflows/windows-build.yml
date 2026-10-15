@@ -1,0 +1,27 @@
+name: Windows x64 build
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Restore
+        run: dotnet restore MailSprite/MailSprite.csproj
+      - name: Publish Windows x64 single EXE
+        run: dotnet publish MailSprite/MailSprite.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishTrimmed=false -p:EnableCompressionInSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none -o publish
+      - name: Upload EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: MailSprite-Windows-x64
+          path: publish/MailSprite.exe
+          if-no-files-found: error

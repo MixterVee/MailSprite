@@ -1,0 +1,83 @@
+<Window x:Class="MailSprite.SpriteWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="MailSprite" Width="360" Height="345" WindowStyle="None"
+        ResizeMode="NoResize" AllowsTransparency="True" Background="Transparent"
+        ShowInTaskbar="False" Topmost="True" ShowActivated="False"
+        MouseLeftButtonUp="Window_MouseLeftButtonUp">
+    <Grid x:Name="Root" Opacity="0">
+        <Border HorizontalAlignment="Center" VerticalAlignment="Top"
+                Margin="0,5,0,0" Padding="22,11" CornerRadius="22"
+                BorderBrush="#FFF5C85C" BorderThickness="2" Background="#FDFBFF">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="15" ShadowDepth="3" Opacity="0.36"/>
+            </Border.Effect>
+            <StackPanel>
+                <TextBlock Text="You've got mail!" FontSize="22" FontWeight="Bold"
+                           Foreground="#213A61" HorizontalAlignment="Center"/>
+                <TextBlock Text="MailSprite" FontSize="12" Foreground="#58768F"
+                           HorizontalAlignment="Center" Margin="0,3,0,0"/>
+            </StackPanel>
+        </Border>
+
+        <Canvas x:Name="ButlerSprite" Width="225" Height="238" HorizontalAlignment="Center"
+                VerticalAlignment="Bottom" Margin="0,0,0,10">
+            <Canvas.RenderTransform><TranslateTransform x:Name="ButlerMove" Y="70"/></Canvas.RenderTransform>
+            <Ellipse Canvas.Left="31" Canvas.Top="222" Width="175" Height="12"
+                     Fill="#55000000"/>
+            <!-- Legs and shoes -->
+            <Rectangle Canvas.Left="76" Canvas.Top="178" Width="28" Height="49" Fill="#202938" RadiusX="7"/>
+            <Rectangle Canvas.Left="121" Canvas.Top="178" Width="28" Height="49" Fill="#202938" RadiusX="7"/>
+            <Ellipse Canvas.Left="66" Canvas.Top="213" Width="43" Height="18" Fill="#121B2C"/>
+            <Ellipse Canvas.Left="115" Canvas.Top="213" Width="43" Height="18" Fill="#121B2C"/>
+            <!-- Suit, shirt and lapels -->
+            <Path Data="M 72,115 L 153,115 178,193 51,193 Z" Fill="#23354F"/>
+            <Path Data="M 104,115 L 123,115 131,181 97,181 Z" Fill="#FFF9EF"/>
+            <Path Data="M 74,118 L 103,115 106,160 92,153 Z" Fill="#435C79"/>
+            <Path Data="M 151,118 L 124,115 121,160 136,153 Z" Fill="#435C79"/>
+            <Path Data="M 106,145 L 112,137 120,145 112,154 Z" Fill="#B72F39"/>
+            <Path Data="M 96,144 L 110,137 110,151 Z" Fill="#B72F39"/>
+            <Path Data="M 129,144 L 114,137 114,151 Z" Fill="#B72F39"/>
+            <Ellipse Canvas.Left="109" Canvas.Top="165" Width="7" Height="7" Fill="#DBD4BE"/>
+            <!-- Waving right sleeve and glove -->
+            <Canvas Canvas.Left="144" Canvas.Top="118">
+                <Canvas.RenderTransform><RotateTransform x:Name="ArmRotation" CenterX="5" CenterY="8"/></Canvas.RenderTransform>
+                <Path Data="M 0,0 L 20,8 49,-30 58,-23 33,25 9,36 Z" Fill="#263C57"/>
+                <Ellipse Canvas.Left="47" Canvas.Top="-38" Width="20" Height="24" Fill="#FFF9E8"/>
+                <Ellipse Canvas.Left="42" Canvas.Top="-38" Width="9" Height="14" Fill="#FFF9E8"/>
+            </Canvas>
+            <!-- Other arm -->
+            <Path Data="M 73,124 L 54,130 35,178 47,185 74,152 Z" Fill="#263C57"/>
+            <Ellipse Canvas.Left="30" Canvas.Top="172" Width="22" Height="20" Fill="#FFF9E8"/>
+            <!-- Ears and face -->
+            <Ellipse Canvas.Left="68" Canvas.Top="63" Width="17" Height="29" Fill="#F1BC96"/>
+            <Ellipse Canvas.Left="145" Canvas.Top="63" Width="17" Height="29" Fill="#F1BC96"/>
+            <Ellipse Canvas.Left="78" Canvas.Top="38" Width="76" Height="91" Fill="#F7C9A5"/>
+            <Ellipse Canvas.Left="93" Canvas.Top="74" Width="7" Height="10" Fill="#29313B"/>
+            <Ellipse Canvas.Left="133" Canvas.Top="74" Width="7" Height="10" Fill="#29313B"/>
+            <Path Data="M 110,95 Q 116,100 122,95" Stroke="#C78869" StrokeThickness="2" Fill="Transparent"/>
+            <Path Data="M 100,110 Q 116,121 132,109" Stroke="#8B4750" StrokeThickness="3" Fill="Transparent"/>
+            <Path Data="M 83,65 Q 94,59 103,65" Stroke="#4A3840" StrokeThickness="4"/>
+            <Path Data="M 129,65 Q 139,59 148,65" Stroke="#4A3840" StrokeThickness="4"/>
+            <!-- Formal top hat -->
+            <Rectangle Canvas.Left="83" Canvas.Top="11" Width="65" Height="46" Fill="#202B3F" RadiusX="7"/>
+            <Rectangle Canvas.Left="77" Canvas.Top="48" Width="77" Height="12" Fill="#192236" RadiusX="5"/>
+            <Rectangle Canvas.Left="84" Canvas.Top="44" Width="63" Height="7" Fill="#CBA04A"/>
+            <Ellipse Canvas.Left="107" Canvas.Top="8" Width="12" Height="5" Fill="#B1C3D5"/>
+        </Canvas>
+
+        <Canvas x:Name="EnvelopeSprite" Visibility="Collapsed" Width="225" Height="238"
+                HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,10">
+            <Canvas.RenderTransform><TranslateTransform x:Name="EnvelopeMove" Y="70"/></Canvas.RenderTransform>
+            <Ellipse Canvas.Left="25" Canvas.Top="210" Width="180" Height="18" Fill="#44000000"/>
+            <Path Data="M 28,95 Q 2,70 5,33 Q 72,46 85,118 Z" Fill="#A9D9F7" Stroke="#589ED4" StrokeThickness="2"/>
+            <Path Data="M 197,95 Q 222,70 220,33 Q 152,46 140,118 Z" Fill="#A9D9F7" Stroke="#589ED4" StrokeThickness="2"/>
+            <Rectangle Canvas.Left="43" Canvas.Top="91" Width="140" Height="94"
+                       Fill="#F9FCFF" Stroke="#376FBB" StrokeThickness="4" RadiusX="9"/>
+            <Path Data="M 46,98 L 113,150 180,98" Stroke="#376FBB" StrokeThickness="4" Fill="Transparent"/>
+            <Path Data="M 46,178 L 101,136 M 180,178 L 125,136" Stroke="#92BADD" StrokeThickness="3"/>
+            <Ellipse Canvas.Left="175" Canvas.Top="41" Width="19" Height="19" Fill="#FFD86A"/>
+            <Ellipse Canvas.Left="53" Canvas.Top="48" Width="11" Height="11" Fill="#FFD86A"/>
+        </Canvas>
+    </Grid>
+</Window>
