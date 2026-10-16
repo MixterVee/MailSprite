@@ -114,10 +114,23 @@ public partial class SpriteWindow : Window
         {
             EnvelopeMove.BeginAnimation(TranslateTransform.XProperty,
                 Tween(-110, 0, 860, 0, spring));
-            EnvelopeMove.BeginAnimation(TranslateTransform.YProperty,
-                Tween(80, 0, 820, 0, spring));
-            EnvelopeMove.BeginAnimation(TranslateTransform.YProperty,
-                Oscillate(10, -10, 780, 960, 3.6, sine));
+            // One continuous keyframe sequence: arrive, then bob gently.
+            // Two BeginAnimation calls on the same property would overwrite
+            // one another before the first entrance could play.
+            var floatIn = new DoubleAnimationUsingKeyFrames();
+            floatIn.KeyFrames.Add(new EasingDoubleKeyFrame(80,
+                KeyTime.FromTimeSpan(TimeSpan.Zero)));
+            floatIn.KeyFrames.Add(new EasingDoubleKeyFrame(0,
+                KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(820)), spring));
+            floatIn.KeyFrames.Add(new EasingDoubleKeyFrame(-9,
+                KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(1370)), sine));
+            floatIn.KeyFrames.Add(new EasingDoubleKeyFrame(5,
+                KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(2100)), sine));
+            floatIn.KeyFrames.Add(new EasingDoubleKeyFrame(-7,
+                KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(2850)), sine));
+            floatIn.KeyFrames.Add(new EasingDoubleKeyFrame(0,
+                KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(3550)), sine));
+            EnvelopeMove.BeginAnimation(TranslateTransform.YProperty, floatIn);
             LeftWingAngle.BeginAnimation(RotateTransform.AngleProperty,
                 Oscillate(-12, 16, 210, 280, 10, sine));
             RightWingAngle.BeginAnimation(RotateTransform.AngleProperty,
