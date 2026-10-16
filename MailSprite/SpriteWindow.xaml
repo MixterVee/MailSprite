@@ -7,6 +7,58 @@
         ShowActivated="False" WindowStartupLocation="Manual"
         MouseLeftButtonUp="Window_MouseLeftButtonUp">
     <Grid x:Name="Root" Opacity="0" ClipToBounds="False">
+        <!-- Quiet Windows-style alert: no cartoon, no spinning effects. -->
+        <Border x:Name="MinimalNotice" Visibility="Collapsed"
+                Width="344" Height="108" HorizontalAlignment="Center"
+                VerticalAlignment="Center" CornerRadius="12"
+                Background="#FF1B2028" BorderBrush="#FF566071" BorderThickness="1">
+            <Border.Effect>
+                <DropShadowEffect Color="#FF000000" BlurRadius="16" ShadowDepth="4" Opacity="0.28"/>
+            </Border.Effect>
+            <Border.RenderTransform>
+                <TranslateTransform x:Name="MinimalCardMove" Y="9"/>
+            </Border.RenderTransform>
+            <Grid Margin="18,12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="43"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Border Width="38" Height="38" Background="#FF343E4D"
+                        CornerRadius="8" VerticalAlignment="Center">
+                    <Viewbox Width="25" Height="25" HorizontalAlignment="Center"
+                             VerticalAlignment="Center">
+                        <Canvas Width="40" Height="40">
+                            <Path Data="M 4,11 L 36,11 L 36,31 L 4,31 Z"
+                                  Stroke="#FFDCE5F0" StrokeThickness="2.7" Fill="Transparent"/>
+                            <Path Data="M 5,12 L 20,23 L 35,12"
+                                  Stroke="#FFDCE5F0" StrokeThickness="2.7" Fill="Transparent"/>
+                        </Canvas>
+                    </Viewbox>
+                </Border>
+                <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="10,0,0,0">
+                    <TextBlock Text="New mail received" FontFamily="Segoe UI"
+                               FontSize="16" FontWeight="SemiBold" Foreground="#FFF5F6F9"/>
+                    <TextBlock x:Name="MinimalCountText" Text="1 alert since last clear"
+                               FontFamily="Segoe UI" FontSize="12" Margin="0,5,0,0"
+                               Foreground="#FFC0C8D4"/>
+                    <TextBlock x:Name="MinimalHintText" Text="Click to clear"
+                               FontFamily="Segoe UI" FontSize="10" Margin="0,4,0,0"
+                               Foreground="#FF94A0B0"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+        <!-- Imported professional animation plays in its original frame timing. -->
+        <Border x:Name="CustomHeader" Visibility="Collapsed" Width="300" Height="48"
+                HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,17,0,0"
+                CornerRadius="12" Background="#EE1D2939">
+            <TextBlock x:Name="CustomLabelText" Text="New mail received"
+                       Foreground="#FFF6F9FF" FontSize="16" FontWeight="SemiBold"
+                       VerticalAlignment="Center" HorizontalAlignment="Center"/>
+        </Border>
+        <Image x:Name="CustomGifImage" Visibility="Collapsed"
+               Width="330" Height="280" Stretch="Uniform"
+               HorizontalAlignment="Center" VerticalAlignment="Bottom"
+               Margin="0,0,0,39"/>
         <!-- Understated new default: compact floating email status card. -->
         <Border x:Name="ElegantNotice" Visibility="Collapsed"
                 Width="350" Height="150" VerticalAlignment="Center"

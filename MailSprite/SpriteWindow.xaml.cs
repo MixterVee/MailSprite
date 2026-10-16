@@ -3,6 +3,8 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
+using System.Windows.Media.Imaging;
+using WpfAnimatedGif;
 
 namespace MailSprite;
 
@@ -13,6 +15,9 @@ public partial class SpriteWindow : Window
     private readonly string _placement;
     private readonly bool _envelope;
     private readonly bool _elegant;
+    private readonly bool _minimal;
+    private readonly bool _custom;
+    private readonly bool _preview;
     private readonly bool _persistent;
     private bool _closing;
     private int _driftStep;
@@ -21,29 +26,49 @@ public partial class SpriteWindow : Window
     public event Action? ClearedByUser;
 
     public SpriteWindow(string character, int seconds,
-        string placement = "LeftOfNotification", bool persistent = false, int count = 1)
+        string placement = "LeftOfNotification", bool persistent = false, int count = 1,
+        string gifPath = "", bool preview = false)
     {
         InitializeComponent();
         _placement = placement;
         _persistent = persistent;
+        _preview = preview;
         _envelope = character.Equals("Envelope", StringComparison.OrdinalIgnoreCase);
-        _elegant = !character.Equals("Butler", StringComparison.OrdinalIgnoreCase) && !_envelope;
+        _minimal = character.Equals("Minimal", StringComparison.OrdinalIgnoreCase);
+        _custom = character.Equals("Custom", StringComparison.OrdinalIgnoreCase);
+        _elegant = character.Equals("Elegant", StringComparison.OrdinalIgnoreCase);
 
-        ButlerSprite.Visibility = _elegant || _envelope ? Visibility.Collapsed : Visibility.Visible;
+        ButlerSprite.Visibility = _envelope || _minimal || _custom || _elegant
+            ? Visibility.Collapsed : Visibility.Visible;
         EnvelopeSprite.Visibility = _envelope ? Visibility.Visible : Visibility.Collapsed;
+        MinimalNotice.Visibility = _minimal ? Visibility.Visible : Visibility.Collapsed;
         ElegantNotice.Visibility = _elegant ? Visibility.Visible : Visibility.Collapsed;
-        if (_elegant)
+        CustomHeader.Visibility = _custom ? Visibility.Visible : Visibility.Collapsed;
+        CustomGifImage.Visibility = _custom ? Visibility.Visible : Visibility.Collapsed;
+        if (_minimal || _custom || _elegant)
         {
-            Width = 374;
-            Height = 182;
             MessageBubble.Visibility = Visibility.Collapsed;
-            BubbleTail.Visibility = Visibility.Collapsed;
             SparkleLayer.Visibility = Visibility.Collapsed;
+            Width = _custom ? 390 : 374;
+            Height = _custom ? 405 : 148;
         }
         else
         {
             Width = 390;
             Height = 405;
+        }
+
+        if (_custom)
+        {
+            if (!File.Exists(gifPath))
+                throw new FileNotFoundException("Custom animated GIF not found.", gifPath);
+            var bmp = new BitmapImage();
+            bmp.BeginInit();
+            bmp.CacheOption = BitmapCacheOption.OnLoad;
+            bmp.UriSource = new Uri(Path.GetFullPath(gifPath));
+            bmp.EndInit();
+            ImageBehavior.SetAnimatedSource(CustomGifImage, bmp);
+            ImageBehavior.SetRepeatBehavior(CustomGifImage, RepeatBehavior.Forever);
         }
 
         UpdateCount(count);
@@ -63,6 +88,12 @@ public partial class SpriteWindow : Window
     public void UpdateCount(int count)
     {
         count = Math.Max(1, count);
+        MinimalCountText.Text = _preview
+            ? "Preview only — no email detected"
+            : count == 1 ? "1 alert since last clear" : count + " alerts since last clear";
+        MinimalHintText.Text = _persistent ? "Click to clear" : "Click to dismiss";
+        CustomLabelText.Text = _preview ? "Preview — click to clear"
+            : count == 1 ? "New mail received" : count + " mail alerts";
         AlertCountText.Text = count == 1
             ? "1 alert since last clear"
             : count + " alerts since last clear";
@@ -170,7 +201,16 @@ public partial class SpriteWindow : Window
 
         Root.BeginAnimation(OpacityProperty, Tween(0, 1, 360, 0, settle));
 
-        if (_elegant)
+        if (_minimal)
+        {
+            MinimalCardMove.BeginAnimation(TranslateTransform.YProperty,
+                Tween(9, 0, 330, 0, settle));
+        }
+        else if (_custom)
+        {
+            // The GIF supplies its own motion.
+        }
+        else if (_elegant)
         {
             ElegantCardMove.BeginAnimation(TranslateTransform.YProperty,
                 Tween(17, 0, 570, 0, settle));
