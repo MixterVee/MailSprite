@@ -76,6 +76,7 @@ internal sealed class TrayApp : IDisposable
 {
     private readonly System.Windows.Application _app;
     private readonly Forms.NotifyIcon _icon;
+    private readonly System.Drawing.Icon _mailSpriteIcon;
     private readonly MailSpriteSettings _settings = MailSpriteSettings.Load();
     private WindowsNotificationWatcher? _notificationWatcher;
     private SpriteWindow? _sprite;
@@ -86,9 +87,16 @@ internal sealed class TrayApp : IDisposable
     public TrayApp(System.Windows.Application app)
     {
         _app = app;
+        // Use the same user-selected closed-envelope artwork for both the
+        // tray icon and the EXE's Windows taskbar/file icon.
+        using (var stream = typeof(TrayApp).Assembly.GetManifestResourceStream("MailSprite.Assets.MailSprite.ico")
+            ?? throw new InvalidOperationException("The embedded MailSprite envelope icon is missing."))
+        {
+            _mailSpriteIcon = new System.Drawing.Icon(stream);
+        }
         _icon = new Forms.NotifyIcon
         {
-            Icon = System.Drawing.SystemIcons.Information,
+            Icon = _mailSpriteIcon,
             Text = "MailSprite - animated email notifier",
             Visible = true
         };
@@ -125,14 +133,11 @@ internal sealed class TrayApp : IDisposable
     private void BuildMenu()
     {
         var menu = new Forms.ContextMenuStrip();
-        menu.Items.Add("MailSprite 0.9 - Stay visible").Enabled = false;
+        menu.Items.Add("MailSprite 0.10 - Stay visible").Enabled = false;
         menu.Items.Add(new Forms.ToolStripSeparator());
-        menu.Items.Add("Test: Minimal notice", null, (_, _) => ShowPreview("Minimal"));
-        menu.Items.Add("Test: Envelope Swoop (new)", null, (_, _) => ShowPreview("Swoop"));
-        menu.Items.Add("Test: Mailbox Flag (new)", null, (_, _) => ShowPreview("Mailbox"));
-        menu.Items.Add("Test: Custom animated GIF", null, (_, _) => ShowPreview("Custom"));
-
-
+        // One test command always previews the active animation choice.
+        menu.Items.Add("Test current selection", null,
+            (_, _) => ShowPreview(_settings.Character));
         menu.Items.Add("Clear preview", null, (_, _) => _preview?.Clear());
         menu.Items.Add(new Forms.ToolStripSeparator());
 
@@ -248,7 +253,7 @@ internal sealed class TrayApp : IDisposable
 
         menu.Items.Add("About notification access", null, (_, _) =>
             System.Windows.MessageBox.Show(
-                "MailSprite 0.9\n\nUses the Windows notification listener API, not taskbar badges or email logins." +
+                "MailSprite 0.10\n\nUses the Windows notification listener API, not taskbar badges or email logins." +
                 "\n\nWindows may require an MSIX package identity for notification access. If access is " +
                 "denied or notifications remain invisible, copy the diagnostic report and we'll package the app." +
                 "\n\nMailSprite checks notification origin only. It does not read subjects, senders or bodies.",
@@ -550,5 +555,6 @@ internal sealed class TrayApp : IDisposable
         _preview?.Close();
         _icon.Visible = false;
         _icon.Dispose();
+        _mailSpriteIcon.Dispose();
     }
 }

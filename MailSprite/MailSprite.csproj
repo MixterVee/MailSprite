@@ -8,8 +8,12 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>MailSprite</AssemblyName>
     <RootNamespace>MailSprite</RootNamespace>
-    <Version>0.9.0</Version>
+    <Version>0.10.0</Version>
+    <ApplicationIcon>Assets/MailSprite.ico</ApplicationIcon>
   </PropertyGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Assets/MailSprite.ico" LogicalName="MailSprite.Assets.MailSprite.ico" />
+  </ItemGroup>
   <ItemGroup>
     <PackageReference Include="WpfAnimatedGif" Version="2.0.2" />
     <Reference Include="UIAutomationClient" />
