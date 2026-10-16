@@ -30,7 +30,7 @@ internal sealed class MailSpriteSettings
 {
     public bool Sound { get; set; } = true;
     public bool Voice { get; set; } = false;
-    public bool WatchMailbird { get; set; } = false;
+    public bool WatchMailbird { get; set; } = false; // Legacy setting; ignored as a safety measure.
     public bool StartWithWindows { get; set; } = false;
     public string Character { get; set; } = "Butler";
     public int Seconds { get; set; } = 7;
@@ -68,7 +68,7 @@ internal sealed class TrayApp : IDisposable
     private readonly System.Windows.Application _app;
     private readonly Forms.NotifyIcon _icon;
     private readonly MailSpriteSettings _settings = MailSpriteSettings.Load();
-    private MailbirdWatcher? _watcher;
+    private WindowsNotificationWatcher? _notificationWatcher;
     private SpriteWindow? _sprite;
     private DateTime _lastNotice = DateTime.MinValue;
     private bool _disposed;
@@ -84,9 +84,8 @@ internal sealed class TrayApp : IDisposable
         };
         _icon.DoubleClick += (_, _) => ShowSprite(_settings.Character);
         BuildMenu();
-        // Migration to 0.3: old detection rules caused repeated false alerts.
-        // Never automatically re-enable the watcher from 0.1/0.2 settings.
-        // User can opt in explicitly for diagnostics.
+        // Old false-positive window watchers never auto-start. Explicit
+        // Windows permission is required for the new notification listener.
         if (_settings.WatchMailbird)
         {
             _settings.WatchMailbird = false;
@@ -97,7 +96,7 @@ internal sealed class TrayApp : IDisposable
     private void BuildMenu()
     {
         var menu = new Forms.ContextMenuStrip();
-        menu.Items.Add("MailSprite 0.4 - Preview").Enabled = false;
+        menu.Items.Add("MailSprite 0.5 - Windows notification listener").Enabled = false;
         menu.Items.Add(new Forms.ToolStripSeparator());
         menu.Items.Add("Test: Waving Butler", null, (_, _) => ShowSprite("Butler"));
         menu.Items.Add("Test: Flying Envelope", null, (_, _) => ShowSprite("Envelope"));
@@ -135,32 +134,16 @@ internal sealed class TrayApp : IDisposable
         }) { Checked = _settings.Voice });
 
         menu.Items.Add(new Forms.ToolStripSeparator());
-        menu.Items.Add(new Forms.ToolStripMenuItem("Experimental: watch Mailbird pop-ups", null, (_, _) =>
+        menu.Items.Add("Enable Windows notification listener (permission)", null,
+            async (_, _) => await EnableWindowsNotifications());
+        menu.Items.Add("Copy notification listener diagnostic report", null,
+            (_, _) => CopyDiagnostics());
+        menu.Items.Add("Stop notification listener", null, (_, _) =>
         {
-            _settings.WatchMailbird = !_settings.WatchMailbird;
-            if (_settings.WatchMailbird) StartWatcher();
-            else StopWatcher();
-            SaveAndRefresh();
-        }) { Checked = _settings.WatchMailbird });
-
-        menu.Items.Add("Copy Mailbird diagnostic report", null, (_, _) => CopyDiagnostics());
-        menu.Items.Add("Probe unread badge (copies report)", null, (_, _) =>
-        {
-            try
-            {
-                string result = MailbirdWatcher.ProbeTaskbarBadge();
-                System.Windows.Clipboard.SetText(result);
-                System.Windows.MessageBox.Show(
-                    "Taskbar badge probe copied to clipboard. Paste it into our chat. " +
-                    "The app does not collect sender names or message contents.",
-                    "MailSprite Taskbar Badge Probe");
-            }
-            catch (Exception ex)
-            {
-                System.Windows.MessageBox.Show("Could not probe badge: " + ex.Message,
-                    "MailSprite Taskbar Badge Probe");
-            }
+            StopWatcher();
+            System.Windows.MessageBox.Show("Notification monitoring stopped.", "MailSprite");
         });
+        menu.Items.Add(new Forms.ToolStripSeparator());
         menu.Items.Add(new Forms.ToolStripMenuItem("Start with Windows", null, (_, _) =>
         {
             bool newValue = !_settings.StartWithWindows;
@@ -171,13 +154,12 @@ internal sealed class TrayApp : IDisposable
             }
         }) { Checked = _settings.StartWithWindows });
 
-        menu.Items.Add("About / detection limitations", null, (_, _) =>
+        menu.Items.Add("About notification access", null, (_, _) =>
             System.Windows.MessageBox.Show(
-                "MailSprite 0.4\n\nTest Butler and Test Envelope work without email access.\n\n" +
-                "Mailbird detection is EXPERIMENTAL and observes Windows popup/show events. " +
-                "It cannot reliably observe every type of Windows notification. " +
-                "It may miss some new emails or occasionally trigger on unrelated Mailbird windows.\n\n" +
-                "MailSprite does not read messages, connect to Gmail/Outlook, or request passwords.",
+                "MailSprite 0.5\n\nUses the Windows notification listener API, not taskbar badges or email logins." +
+                "\n\nWindows may require an MSIX package identity for notification access. If access is " +
+                "denied or notifications remain invisible, copy the diagnostic report and we'll package the app." +
+                "\n\nMailSprite checks notification origin only. It does not read subjects, senders or bodies.",
                 "MailSprite", MessageBoxButton.OK, MessageBoxImage.Information));
         menu.Items.Add(new Forms.ToolStripSeparator());
         menu.Items.Add("Exit MailSprite", null, (_, _) => _app.Shutdown());
@@ -233,27 +215,36 @@ internal sealed class TrayApp : IDisposable
         }
     }
 
-    private void StartWatcher()
+    private async Task EnableWindowsNotifications()
     {
-        if (_watcher is not null) return;
-        try
+        if (_notificationWatcher?.IsWatching == true)
         {
-            _watcher = new MailbirdWatcher(() =>
-            {
-                _app.Dispatcher.BeginInvoke(() =>
-                {
-                    if ((DateTime.UtcNow - _lastNotice).TotalSeconds < 12) return;
-                    _lastNotice = DateTime.UtcNow;
-                    ShowSprite(_settings.Character);
-                });
-            });
+            System.Windows.MessageBox.Show("Windows notification listener is already running.", "MailSprite");
+            return;
         }
-        catch (Exception ex)
+        StopWatcher();
+        var watcher = new WindowsNotificationWatcher(_app.Dispatcher, () =>
         {
-            _settings.WatchMailbird = false;
-            _settings.Save();
-            _icon.ShowBalloonTip(5000, "MailSprite", "Mailbird watcher could not start: " + ex.Message,
-                Forms.ToolTipIcon.Warning);
+            if ((DateTime.UtcNow - _lastNotice).TotalSeconds < 10) return;
+            _lastNotice = DateTime.UtcNow;
+            ShowSprite(_settings.Character);
+        });
+        _notificationWatcher = watcher;
+        bool enabled = await watcher.RequestAccessAndStartAsync();
+        if (!enabled)
+        {
+            System.Windows.MessageBox.Show(
+                "Windows has not started the notification listener. No emails will trigger animations." +
+                "\n\nPlease select 'Copy notification listener diagnostic report' and paste the result here." +
+                "\n\nIf Windows requires an app package, we'll use a properly permissioned MSIX build.",
+                "MailSprite Listener Setup");
+        }
+        else
+        {
+            System.Windows.MessageBox.Show(
+                "Notification listener started. Send a NEW email after this dialog closes." +
+                "\n\nIf you don't see the animation, copy the diagnostic report.",
+                "MailSprite Listener");
         }
     }
 
@@ -261,26 +252,25 @@ internal sealed class TrayApp : IDisposable
     {
         try
         {
-            string report = _watcher?.GetDiagnosticReport() ??
-                "MailSprite detector is OFF. Right-click the tray icon and enable " +
-                "'Experimental: watch Mailbird pop-ups' before sending a test email.";
+            string report = _notificationWatcher?.GetDiagnosticReport() ??
+                "MailSprite Test 5: listener hasn't been enabled yet. Select " +
+                "'Enable Windows notification listener (permission)' first.";
             System.Windows.Clipboard.SetText(report);
             System.Windows.MessageBox.Show(
-                "Diagnostic report copied to your clipboard. Paste it into our chat after " +
-                "a test email arrives. MailSprite does not record your email subjects or senders.",
+                "Privacy-safe diagnostic report copied. Paste it into our chat.",
                 "MailSprite Diagnostics");
         }
         catch (Exception ex)
         {
-            System.Windows.MessageBox.Show("Unable to copy diagnostic report: " + ex.Message,
+            System.Windows.MessageBox.Show("Could not copy report: " + ex.GetType().Name,
                 "MailSprite Diagnostics");
         }
     }
 
     private void StopWatcher()
     {
-        _watcher?.Dispose();
-        _watcher = null;
+        _notificationWatcher?.Dispose();
+        _notificationWatcher = null;
     }
 
     private static bool SetStartup(bool enabled)

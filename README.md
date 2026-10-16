@@ -1,33 +1,26 @@
 # MailSprite
 
-Windows 11 system-tray app restoring IncrediMail-inspired animations while you use Mailbird.
+Windows 11 tray app providing IncrediMail-inspired butler and envelope animations while you keep Mailbird.
 
-## Test 4 — Mailbird tray notification detector
+## Test 5 — Windows notification listener
 
-Test 4 switches from the overly broad 0.2 window-show events to a deliberately conservative **new lower-right popup** watcher.
+Your independent **Notification Logger** app recorded real Mailbird notifications even though the prior window popup probes did not. Accordingly, Test 5 stops using window shapes as an email signal. It instead probes Microsoft's official **UserNotificationListener** API.
 
-- A new candidate must be a small, visible notification-like window near a desktop notification corner.
-- A candidate must be a secondary window belonging to Mailbird, or a clearly Mailbird-labelled Windows-hosted toast.
-- Popup windows already on screen when monitoring starts are ignored.
-- Simply opening Mailbird or its normal main window, taskbar icon changes and ordinary tray activity should not trigger an animation.
-- Persistent popups trigger only once; alerts are throttled to once every 12 seconds.
-- No Gmail/Outlook account access or passwords.
-- No email subjects, sender details or message text are logged. Windows may expose notification text to the detection API, but MailSprite only checks for the word "Mailbird", discarding everything else.
+### Important Windows packaging limitation
 
-### Enable Mailbird's native popup
+Microsoft documents this API as requiring the **User Notification Listener capability** in the application manifest plus explicit user consent. Our first Test 5 build is still an **unpackaged EXE** to see whether the API is even available in this configuration; **do not assume that permission "Allowed" means it works**. Some unpackaged applications can query notifications but can't subscribe to change events, and others cannot see notifications at all. If the diagnostic report shows no app identity or no notifications, the next step will be a properly signed and installed MSIX package with userNotificationListener capability.
 
-Mailbird → Menu → Settings → General → **Show tray notifications when receiving a message**.
+### Testing
 
-This is independent from **Show unread count in taskbar & system tray**. If Mailbird only draws an unread badge and displays no actual notification, Test 4 cannot detect that message.
+1. Fully exit older MailSprite versions from the tray.
+2. Download latest GitHub Actions **MailSprite-Windows-x64** ZIP, extract and run.
+3. Right-click tray icon → **Enable Windows notification listener (permission)**.
+4. If Windows presents a notification access permission request, choose Allow if you're comfortable.
+5. Send yourself an email *after* enabling the listener.
+6. Right-click MailSprite → **Copy notification listener diagnostic report**; paste the text in chat.
 
-### How to test
+No Gmail or Outlook passwords required. The code reads **notification origin (app name/ID), identifier, and timestamp**, not notification subjects, message bodies or sender addresses. A permissioned listener is inherently capable of accessing all apps' notifications at the OS level; MailSprite deliberately filters to Mailbird and does not save any message content.
 
-1. **Exit** the old MailSprite entirely from the tray.
-2. Download the Windows x64 ZIP artifact from the [latest successful build](https://github.com/MixterVee/MailSprite/actions), unzip and run the EXE.
-3. Right-click MailSprite's tray icon. **Test: Waving Butler** should still work.
-4. Enable **Experimental: watch Mailbird pop-ups**.
-5. Leave Mailbird open or minimized. Wait at least 5 seconds for the detector to establish the current-window baseline.
-6. Send a new email to a Mailbird inbox. When it arrives, check whether Mailbird displays a **rectangular notification pop-up**, not just its numbered taskbar badge.
-7. Choose **Copy Mailbird diagnostic report** and paste that report into your test chat.
+Test 5 may need proper packaging before detection works. This release is a diagnostic experiment, **not a claim that email alerts are fixed**.
 
-The current test is not guaranteed to detect all Mailbird versions or notification styles. If the report shows no popup candidates and only a taskbar badge is visible, a more direct email integration may be required.
+Official API reference: https://learn.microsoft.com/en-us/windows/uwp/design/shell/tiles-and-notifications/notification-listener
