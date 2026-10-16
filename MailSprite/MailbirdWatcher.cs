@@ -292,7 +292,7 @@ internal sealed class MailbirdWatcher : IDisposable
                     entry.AlreadyReported = true;
                     _lastAlert = now;
                     _alerts++;
-                    Record("NEW MAIL-LIKE POPUP", provenance + " -> sprite");
+                    Record("NEW MAIL-LIKE POPUP " + provenance + " -> sprite");
                     _onAlert();
                 }
             }
