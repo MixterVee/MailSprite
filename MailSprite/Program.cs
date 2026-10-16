@@ -42,6 +42,7 @@ internal sealed class MailSpriteSettings
     public string RecordedWavPath { get; set; } = "";
     public string CustomGifPath { get; set; } = "";
     public string AnnouncementMode { get; set; } = "Off";
+    public string SoundStyle { get; set; } = "SoftChime";
 
     private static string SettingsPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MailSprite", "settings.json");
@@ -94,11 +95,14 @@ internal sealed class TrayApp : IDisposable
         _icon.DoubleClick += (_, _) => ShowPreview(_settings.Character);
         // Earlier versions only offered cartoon characters. Switch the
         // existing installation to the new restrained default once.
-        if (_settings.SettingsVersion < 8)
+        if (_settings.SettingsVersion < 9)
         {
-            _settings.Character = "Minimal";
-            _settings.AnnouncementMode = _settings.Voice ? "Windows" : "Off";
-            _settings.SettingsVersion = 8;
+            if (_settings.Character is "Butler" or "Envelope" or "Elegant")
+                _settings.Character = "Minimal";
+            if (_settings.AnnouncementMode == "Windows")
+                _settings.AnnouncementMode = "Off";
+            _settings.SoundStyle = "SoftChime";
+            _settings.SettingsVersion = 9;
             _settings.Save();
         }
         BuildMenu();
@@ -121,13 +125,14 @@ internal sealed class TrayApp : IDisposable
     private void BuildMenu()
     {
         var menu = new Forms.ContextMenuStrip();
-        menu.Items.Add("MailSprite 0.8 - Stay visible").Enabled = false;
+        menu.Items.Add("MailSprite 0.9 - Stay visible").Enabled = false;
         menu.Items.Add(new Forms.ToolStripSeparator());
         menu.Items.Add("Test: Minimal notice", null, (_, _) => ShowPreview("Minimal"));
-        menu.Items.Add("Test: Elegant notice", null, (_, _) => ShowPreview("Elegant"));
+        menu.Items.Add("Test: Envelope Swoop (new)", null, (_, _) => ShowPreview("Swoop"));
+        menu.Items.Add("Test: Mailbox Flag (new)", null, (_, _) => ShowPreview("Mailbox"));
         menu.Items.Add("Test: Custom animated GIF", null, (_, _) => ShowPreview("Custom"));
-        menu.Items.Add("Test: Waving Butler (classic)", null, (_, _) => ShowPreview("Butler"));
-        menu.Items.Add("Test: Flying Envelope (classic)", null, (_, _) => ShowPreview("Envelope"));
+
+
         menu.Items.Add("Clear preview", null, (_, _) => _preview?.Clear());
         menu.Items.Add(new Forms.ToolStripSeparator());
 
@@ -136,12 +141,12 @@ internal sealed class TrayApp : IDisposable
         { Checked = _settings.Character == "Minimal" });
         character.DropDownItems.Add(new Forms.ToolStripMenuItem("Custom animated GIF", null, (_, _) => SetCharacter("Custom"))
         { Checked = _settings.Character == "Custom", Enabled = File.Exists(_settings.CustomGifPath) });
-        character.DropDownItems.Add(new Forms.ToolStripMenuItem("Elegant mail notice", null, (_, _) => SetCharacter("Elegant"))
-        { Checked = _settings.Character == "Elegant" });
-        character.DropDownItems.Add(new Forms.ToolStripMenuItem("Waving Butler (classic)", null, (_, _) => SetCharacter("Butler"))
-        { Checked = _settings.Character == "Butler" });
-        character.DropDownItems.Add(new Forms.ToolStripMenuItem("Flying Envelope (classic)", null, (_, _) => SetCharacter("Envelope"))
-        { Checked = _settings.Character == "Envelope" });
+        character.DropDownItems.Add(new Forms.ToolStripMenuItem("Envelope Swoop (original)", null, (_, _) => SetCharacter("Swoop"))
+        { Checked = _settings.Character == "Swoop" });
+        character.DropDownItems.Add(new Forms.ToolStripMenuItem("Mailbox Flag (original)", null, (_, _) => SetCharacter("Mailbox"))
+        { Checked = _settings.Character == "Mailbox" });
+
+
         menu.Items.Add(character);
         menu.Items.Add("Choose custom animated GIF...", null, (_, _) => ChooseGif());
 
@@ -187,11 +192,25 @@ internal sealed class TrayApp : IDisposable
         }) { Checked = _settings.KeepVisibleUntilCleared });
         menu.Items.Add("Clear waiting mail alert", null, (_, _) => ClearWaitingAlert());
         menu.Items.Add(new Forms.ToolStripSeparator());
-        menu.Items.Add(new Forms.ToolStripMenuItem("Sound effect", null, (_, _) =>
+        var soundMenu = new Forms.ToolStripMenuItem("Notification sound");
+        foreach (var item in new (string Value, string Name)[]
         {
-            _settings.Sound = !_settings.Sound;
-            SaveAndRefresh();
-        }) { Checked = _settings.Sound });
+            ("Off", "Off"),
+            ("SoftChime", "Soft chime (default)"),
+            ("PaperFlick", "Paper flick"),
+            ("ClearBell", "Clear bell")
+        })
+        {
+            string value = item.Value;
+            soundMenu.DropDownItems.Add(new Forms.ToolStripMenuItem(item.Name, null, (_, _) =>
+            {
+                _settings.SoundStyle = value;
+                _settings.Sound = value != "Off";
+                SaveAndRefresh();
+                if (_settings.Sound) BuiltInSounds.Play(value);
+            }) { Checked = (_settings.Sound ? _settings.SoundStyle : "Off") == value });
+        }
+        menu.Items.Add(soundMenu);
 
         var speechMenu = new Forms.ToolStripMenuItem("Voice announcement");
         speechMenu.DropDownItems.Add(new Forms.ToolStripMenuItem("Off", null,
@@ -229,7 +248,7 @@ internal sealed class TrayApp : IDisposable
 
         menu.Items.Add("About notification access", null, (_, _) =>
             System.Windows.MessageBox.Show(
-                "MailSprite 0.8\n\nUses the Windows notification listener API, not taskbar badges or email logins." +
+                "MailSprite 0.9\n\nUses the Windows notification listener API, not taskbar badges or email logins." +
                 "\n\nWindows may require an MSIX package identity for notification access. If access is " +
                 "denied or notifications remain invisible, copy the diagnostic report and we'll package the app." +
                 "\n\nMailSprite checks notification origin only. It does not read subjects, senders or bodies.",
@@ -330,7 +349,7 @@ internal sealed class TrayApp : IDisposable
 
     private void PlaySound()
     {
-        if (_settings.Sound) SystemSounds.Asterisk.Play();
+        if (_settings.Sound) BuiltInSounds.Play(_settings.SoundStyle);
         Speak();
     }
 

@@ -17,6 +17,8 @@ public partial class SpriteWindow : Window
     private readonly bool _envelope;
     private readonly bool _elegant;
     private readonly bool _minimal;
+    private readonly bool _swoop;
+    private readonly bool _mailbox;
     private readonly bool _custom;
     private readonly bool _preview;
     private readonly bool _persistent;
@@ -36,23 +38,27 @@ public partial class SpriteWindow : Window
         _preview = preview;
         _envelope = character.Equals("Envelope", StringComparison.OrdinalIgnoreCase);
         _minimal = character.Equals("Minimal", StringComparison.OrdinalIgnoreCase);
+        _swoop = character.Equals("Swoop", StringComparison.OrdinalIgnoreCase);
+        _mailbox = character.Equals("Mailbox", StringComparison.OrdinalIgnoreCase);
         _custom = character.Equals("Custom", StringComparison.OrdinalIgnoreCase);
         _elegant = character.Equals("Elegant", StringComparison.OrdinalIgnoreCase);
 
-        ButlerSprite.Visibility = _envelope || _minimal || _custom || _elegant
+        ButlerSprite.Visibility = _envelope || _minimal || _swoop || _mailbox || _custom || _elegant
             ? Visibility.Collapsed : Visibility.Visible;
         EnvelopeSprite.Visibility = _envelope ? Visibility.Visible : Visibility.Collapsed;
         MinimalNotice.Visibility = _minimal ? Visibility.Visible : Visibility.Collapsed;
+        SwoopNotice.Visibility = _swoop ? Visibility.Visible : Visibility.Collapsed;
+        MailboxNotice.Visibility = _mailbox ? Visibility.Visible : Visibility.Collapsed;
         ElegantNotice.Visibility = _elegant ? Visibility.Visible : Visibility.Collapsed;
         CustomHeader.Visibility = _custom ? Visibility.Visible : Visibility.Collapsed;
         CustomGifImage.Visibility = _custom ? Visibility.Visible : Visibility.Collapsed;
-        if (_minimal || _custom || _elegant)
+        if (_minimal || _swoop || _mailbox || _custom || _elegant)
         {
             MessageBubble.Visibility = Visibility.Collapsed;
             BubbleTail.Visibility = Visibility.Collapsed;
             SparkleLayer.Visibility = Visibility.Collapsed;
             Width = _custom ? 390 : 374;
-            Height = _custom ? 405 : 148;
+            Height = _custom ? 405 : (_swoop || _mailbox ? 210 : 148);
         }
         else
         {
@@ -94,6 +100,12 @@ public partial class SpriteWindow : Window
             ? "Preview only — no email detected"
             : count == 1 ? "1 alert since last clear" : count + " alerts since last clear";
         MinimalHintText.Text = _persistent ? "Click to clear" : "Click to dismiss";
+        string countLabel = _preview ? "Preview only — no email detected" :
+            count == 1 ? "1 alert since last clear" : count + " alerts since last clear";
+        SwoopCountText.Text = countLabel;
+        MailboxCountText.Text = countLabel;
+        SwoopHintText.Text = _persistent ? "Click to clear" : "Click to dismiss";
+        MailboxHintText.Text = _persistent ? "Click to clear" : "Click to dismiss";
         CustomLabelText.Text = _preview ? "Preview — click to clear"
             : count == 1 ? "New mail received" : count + " mail alerts";
         AlertCountText.Text = count == 1
@@ -207,6 +219,23 @@ public partial class SpriteWindow : Window
         {
             MinimalCardMove.BeginAnimation(TranslateTransform.YProperty,
                 Tween(9, 0, 330, 0, settle));
+        }
+        else if (_swoop)
+        {
+            SwoopSlide.BeginAnimation(TranslateTransform.XProperty,
+                Tween(86, 0, 740, 0, new CubicEase { EasingMode = EasingMode.EaseOut }));
+            SwoopFlapRotation.BeginAnimation(RotateTransform.AngleProperty,
+                Tween(-42, 0, 650, 440, settle));
+            SwoopTrail.BeginAnimation(OpacityProperty,
+                Tween(0.75, 0, 690, 180, settle));
+        }
+        else if (_mailbox)
+        {
+            MailboxRise.BeginAnimation(TranslateTransform.YProperty,
+                Tween(13, 0, 530, 0, settle));
+            MailboxFlagAngle.BeginAnimation(RotateTransform.AngleProperty,
+                Tween(-65, 0, 800, 460,
+                    new BackEase { Amplitude = 0.15, EasingMode = EasingMode.EaseOut }));
         }
         else if (_custom)
         {
