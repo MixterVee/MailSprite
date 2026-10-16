@@ -97,7 +97,7 @@ internal sealed class TrayApp : IDisposable
     private void BuildMenu()
     {
         var menu = new Forms.ContextMenuStrip();
-        menu.Items.Add("MailSprite 0.3 - Preview").Enabled = false;
+        menu.Items.Add("MailSprite 0.4 - Preview").Enabled = false;
         menu.Items.Add(new Forms.ToolStripSeparator());
         menu.Items.Add("Test: Waving Butler", null, (_, _) => ShowSprite("Butler"));
         menu.Items.Add("Test: Flying Envelope", null, (_, _) => ShowSprite("Envelope"));
@@ -173,7 +173,7 @@ internal sealed class TrayApp : IDisposable
 
         menu.Items.Add("About / detection limitations", null, (_, _) =>
             System.Windows.MessageBox.Show(
-                "MailSprite 0.3\n\nTest Butler and Test Envelope work without email access.\n\n" +
+                "MailSprite 0.4\n\nTest Butler and Test Envelope work without email access.\n\n" +
                 "Mailbird detection is EXPERIMENTAL and observes Windows popup/show events. " +
                 "It cannot reliably observe every type of Windows notification. " +
                 "It may miss some new emails or occasionally trigger on unrelated Mailbird windows.\n\n" +

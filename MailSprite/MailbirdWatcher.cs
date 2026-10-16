@@ -2,78 +2,91 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows.Automation;
+using System.Windows.Threading;
+using Forms = System.Windows.Forms;
 
 namespace MailSprite;
 
 /// <summary>
-/// Diagnostics-first Mailbird popup detector. Observes native Windows show/alert
-/// events plus UI Automation top-level window-open events. Does not read mail.
-/// Mailbird can draw notifications inside an existing window, in which case
-/// neither hook is guaranteed to detect them.
+/// Test 4: Conservative Windows popup watcher. Does not read Gmail/Outlook or
+/// infer mail from the tray badge. Tracks *new* small lower-right Mailbird/
+/// Mailbird-labelled shell windows, rather than any mailbird window-open event.
 /// </summary>
 internal sealed class MailbirdWatcher : IDisposable
 {
-    private const uint EventSystemAlert = 0x0002;
+    private const int GwOwner = 4;
     private const uint EventObjectShow = 0x8002;
-    private const uint EventObjectNameChange = 0x800C;
-    private const int ObjIdWindow = 0;
-    private const uint WineventOutOfContext = 0x0000;
-    private const uint GaRoot = 2;
+    private const uint EventSystemAlert = 0x0002;
+    private const uint WinEventOutOfContext = 0;
 
-    private delegate void WinEventCallback(
-        IntPtr hook, uint eventType, IntPtr hwnd, int idObject, int idChild,
-        uint eventThread, uint eventTime);
+    private delegate void WinEventCallback(IntPtr hook, uint eventType, IntPtr hwnd,
+        int objectId, int childId, uint threadId, uint time);
+    private delegate bool EnumWindowsCallback(IntPtr hwnd, IntPtr state);
 
+    [DllImport("user32.dll")]
+    private static extern bool EnumWindows(EnumWindowsCallback callback, IntPtr state);
+    [DllImport("user32.dll")]
+    private static extern bool IsWindowVisible(IntPtr hwnd);
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetWindowText(IntPtr hwnd, StringBuilder buffer, int capacity);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetClassName(IntPtr hwnd, StringBuilder buffer, int capacity);
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetWindow(IntPtr hwnd, int command);
+    [DllImport("user32.dll")]
+    private static extern bool GetWindowRect(IntPtr hwnd, out WinRect bounds);
     [DllImport("user32.dll")]
     private static extern IntPtr SetWinEventHook(uint eventMin, uint eventMax,
-        IntPtr module, WinEventCallback callback, uint processId,
-        uint threadId, uint flags);
-
+        IntPtr module, WinEventCallback callback, uint processId, uint threadId, uint flags);
     [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool UnhookWinEvent(IntPtr hook);
 
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-    private static extern int GetClassName(IntPtr hwnd, StringBuilder className, int maxCount);
-
-    [DllImport("user32.dll")]
-    private static extern IntPtr GetAncestor(IntPtr hwnd, uint flags);
-
-    [DllImport("user32.dll")]
-    private static extern bool GetWindowRect(IntPtr hwnd, out Rect rectangle);
-
     [StructLayout(LayoutKind.Sequential)]
-    private struct Rect { public int Left, Top, Right, Bottom; }
+    private struct WinRect { public int Left, Top, Right, Bottom; }
 
     private readonly object _gate = new();
     private readonly Action _onAlert;
-    private readonly AutomationElement _root;
-    private readonly AutomationEventHandler _uiaHandler;
-    private readonly WinEventCallback _nativeCallback;
+    private readonly DispatcherTimer _pollTimer;
+    private readonly WinEventCallback _winEventCallback;
     private readonly List<IntPtr> _hooks = new();
+    private readonly Dictionary<IntPtr, Candidate> _seen = new();
     private readonly Queue<string> _recent = new();
-    private readonly Dictionary<string, DateTime> _logThrottle = new();
-    private readonly DateTime _start = DateTime.Now;
+    private readonly DateTime _started = DateTime.Now;
+    private readonly DateTime _warmUntil = DateTime.UtcNow.AddSeconds(4);
 
     private bool _disposed;
-    private DateTime _lastMatch = DateTime.MinValue;
-    private int _mailbirdEvents, _shellEvents, _uiaEvents, _matches;
+    private bool _primed;
+    private bool _mailbirdWasPresent;
+    private DateTime _lastAlert = DateTime.MinValue;
+    private int _polls, _candidates, _alerts, _mailbirdWindows, _shellEvents;
+
+    private sealed class Candidate
+    {
+        public DateTime FirstSeenUtc { get; init; }
+        public bool AlreadyReported { get; set; }
+        public bool WasPreexisting { get; init; }
+    }
 
     public MailbirdWatcher(Action onAlert)
     {
         _onAlert = onAlert;
-        _root = AutomationElement.RootElement;
-        _uiaHandler = OnWindowOpened;
-        _nativeCallback = OnNativeEvent; // Retain callback delegate so GC cannot collect it.
-
+        _winEventCallback = OnWinEvent;
+        _pollTimer = new DispatcherTimer(DispatcherPriority.Background)
+        {
+            Interval = TimeSpan.FromMilliseconds(600)
+        };
+        _pollTimer.Tick += (_, _) => PollWindows();
         try
         {
-            Automation.AddAutomationEventHandler(
-                WindowPattern.WindowOpenedEvent, _root, TreeScope.Children, _uiaHandler);
-            AddHook(EventSystemAlert);
             AddHook(EventObjectShow);
-            AddHook(EventObjectNameChange);
-            Record("Hooks started", "monitoring Mailbird and Windows notification hosts");
+            AddHook(EventSystemAlert);
+            // Baseline all currently visible windows. Never trigger on startup.
+            PollWindows();
+            _primed = true;
+            _pollTimer.Start();
+            Record("Test 4 activated: waiting for actual newly appearing tray popups");
         }
         catch
         {
@@ -82,199 +95,229 @@ internal sealed class MailbirdWatcher : IDisposable
         }
     }
 
-    private void AddHook(uint eventCode)
+    private void AddHook(uint type)
     {
-        var hook = SetWinEventHook(eventCode, eventCode, IntPtr.Zero,
-            _nativeCallback, 0, 0, WineventOutOfContext);
-        if (hook == IntPtr.Zero)
-            throw new InvalidOperationException("Windows event hook failed: " + eventCode);
+        var hook = SetWinEventHook(type, type, IntPtr.Zero, _winEventCallback,
+            0, 0, WinEventOutOfContext);
+        if (hook == IntPtr.Zero) throw new InvalidOperationException(
+            "Unable to register Windows event hook " + type);
         _hooks.Add(hook);
     }
 
-    private static string ProcessName(int pid)
+    private void OnWinEvent(IntPtr hook, uint type, IntPtr hwnd,
+        int objectId, int childId, uint threadId, uint time)
     {
-        try { return Process.GetProcessById(pid).ProcessName; }
-        catch { return "<exited>"; }
+        if (_disposed || hwnd == IntPtr.Zero || objectId != 0) return;
+        try
+        {
+            GetWindowThreadProcessId(hwnd, out uint pid);
+            if (pid == 0) return;
+            string process = GetProcessName(pid);
+            if (!IsMailbird(process) && !IsShellHost(process)) return;
+            lock (_gate)
+            {
+                if (IsShellHost(process)) _shellEvents++;
+            }
+            // Deliberately never fire an alert from this event. A Windows
+            // show event cannot distinguish mail from application UI.
+        }
+        catch { }
+    }
+
+    private static string GetProcessName(uint pid)
+    {
+        try { return Process.GetProcessById((int)pid).ProcessName; }
+        catch { return ""; }
     }
 
     private static bool IsMailbird(string process) =>
         process.Contains("mailbird", StringComparison.OrdinalIgnoreCase);
 
-    private static bool IsShell(string process) =>
-        process.Contains("shellexperiencehost", StringComparison.OrdinalIgnoreCase) ||
-        process.Contains("explorer", StringComparison.OrdinalIgnoreCase);
+    private static bool IsShellHost(string process) =>
+        process.Equals("explorer", StringComparison.OrdinalIgnoreCase) ||
+        process.Equals("ShellExperienceHost", StringComparison.OrdinalIgnoreCase) ||
+        process.Equals("NotificationUx", StringComparison.OrdinalIgnoreCase);
 
-    private void OnNativeEvent(IntPtr hook, uint eventType, IntPtr hwnd,
-        int idObject, int idChild, uint eventThread, uint eventTime)
+    private static string WindowClass(IntPtr hwnd)
     {
-        if (_disposed || hwnd == IntPtr.Zero || idObject != ObjIdWindow) return;
-        try
-        {
-            _ = GetWindowThreadProcessId(hwnd, out uint pid);
-            if (pid == 0) return;
-            string process = ProcessName((int)pid);
-            bool fromMailbird = IsMailbird(process);
-            bool fromShell = IsShell(process);
-            if (!fromMailbird && !fromShell) return;
-
-            string category = eventType switch
-            {
-                EventSystemAlert => "system alert",
-                EventObjectShow => "window show",
-                _ => "name change"
-            };
-
-            var classBuffer = new StringBuilder(260);
-            GetClassName(hwnd, classBuffer, classBuffer.Capacity);
-            string className = classBuffer.ToString();
-            bool classSuggestsAlert =
-                className.Contains("toast", StringComparison.OrdinalIgnoreCase) ||
-                className.Contains("notification", StringComparison.OrdinalIgnoreCase) ||
-                className.Contains("alert", StringComparison.OrdinalIgnoreCase);
-
-            if (fromMailbird)
-            {
-                lock (_gate) _mailbirdEvents++;
-                bool smallTopLevel = false;
-                if (eventType == EventObjectShow &&
-                    GetAncestor(hwnd, GaRoot) == hwnd && GetWindowRect(hwnd, out Rect r))
-                {
-                    int width = r.Right - r.Left;
-                    int height = r.Bottom - r.Top;
-                    smallTopLevel = width >= 175 && width <= 850 &&
-                                    height >= 55 && height <= 390;
-                }
-
-                Record(category, "Mailbird class=" + ScrubClass(className) +
-                    (smallTopLevel ? " small top-level window" : ""));
-                // Diagnostic only: a small Mailbird window can be settings,
-                // account switching, splash screens, or any normal UI popup.
-                // Never infer a new email from window size or class alone.
-                // Confirmed email detection will require a dedicated source.
-            }
-            else if (eventType == EventObjectShow || eventType == EventSystemAlert)
-            {
-                lock (_gate) _shellEvents++;
-                // Windows owns its toast windows. Check only accessible labels
-                // for the literal app name, never retain email or sender text.
-                bool mentionsMailbird = false;
-                if (classSuggestsAlert || eventType == EventSystemAlert)
-                    mentionsMailbird = AccessibleNamesMentionMailbird(hwnd);
-
-                Record(category, "Windows shell class=" + ScrubClass(className) +
-                    (mentionsMailbird ? " Mailbird-label detected" : ""));
-                // Even shell-hosted popups with Mailbird branding can be
-                // regular menus, taskbar previews or app status windows.
-                // Keep as diagnostic evidence, never fire automatically.
-            }
-        }
-        catch
-        {
-            // Accessibility elements may disappear as notifications animate away.
-        }
+        var buffer = new StringBuilder(160);
+        GetClassName(hwnd, buffer, buffer.Capacity);
+        return buffer.ToString();
     }
 
-    [DllImport("user32.dll")]
-    private static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint processId);
-
-    private static bool AccessibleNamesMentionMailbird(IntPtr hwnd)
+    private static string WindowTitle(IntPtr hwnd)
     {
+        var buffer = new StringBuilder(500);
+        GetWindowText(hwnd, buffer, buffer.Capacity);
+        return buffer.ToString();
+    }
+
+    private static bool LooksLikeInboxOrMainWindow(string title)
+    {
+        // Exclude app windows that are obviously not an incoming-mail toast.
+        return title.Contains("Settings", StringComparison.OrdinalIgnoreCase) ||
+            title.Contains("Compose", StringComparison.OrdinalIgnoreCase) ||
+            title.Contains("Inbox", StringComparison.OrdinalIgnoreCase) ||
+            title.Equals("Mailbird", StringComparison.OrdinalIgnoreCase) ||
+            title.Contains("Preferences", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool NearNotificationCorner(WinRect rect)
+    {
+        int width = rect.Right - rect.Left;
+        int height = rect.Bottom - rect.Top;
+        if (width < 165 || width > 800 || height < 65 || height > 415)
+            return false;
+
+        // Multi-monitor aware: taskbar/tray may be on another monitor.
+        foreach (var screen in Forms.Screen.AllScreens)
+        {
+            var area = screen.WorkingArea;
+            if (rect.Right >= area.Right - 210 &&
+                rect.Right <= area.Right + 45 &&
+                rect.Bottom >= area.Bottom - 245 &&
+                rect.Bottom <= area.Bottom + 45 &&
+                rect.Left >= area.Left - 30 &&
+                rect.Top >= area.Top - 30)
+                return true;
+        }
+        return false;
+    }
+
+    private static bool MailbirdNamedToast(IntPtr hwnd)
+    {
+        // Windows can own notifications. Limit scanning to the already-filtered
+        // small lower-right window and discard all text after checking app name.
         try
         {
-            var element = AutomationElement.FromHandle(hwnd);
-            if ((element.Current.Name ?? "").Contains("mailbird", StringComparison.OrdinalIgnoreCase))
+            var el = AutomationElement.FromHandle(hwnd);
+            if ((el.Current.Name ?? "").Contains("Mailbird", StringComparison.OrdinalIgnoreCase))
                 return true;
-            var children = element.FindAll(TreeScope.Children, Condition.TrueCondition);
-            for (int i = 0; i < Math.Min(children.Count, 18); i++)
-                if ((children[i].Current.Name ?? "").Contains("mailbird", StringComparison.OrdinalIgnoreCase))
-                    return true;
+            var children = el.FindAll(TreeScope.Children, Condition.TrueCondition);
+            for (int i = 0; i < Math.Min(children.Count, 20); i++)
+            {
+                if ((children[i].Current.Name ?? "").Contains("Mailbird",
+                    StringComparison.OrdinalIgnoreCase)) return true;
+            }
         }
         catch { }
         return false;
     }
 
-    private void OnWindowOpened(object sender, AutomationEventArgs args)
+    private static bool IsValidCandidate(IntPtr hwnd, out string provenance)
+    {
+        provenance = "";
+        if (!IsWindowVisible(hwnd) || !GetWindowRect(hwnd, out var rect) ||
+            !NearNotificationCorner(rect)) return false;
+
+        GetWindowThreadProcessId(hwnd, out uint pid);
+        if (pid == 0) return false;
+        string process = GetProcessName(pid);
+        string cls = WindowClass(hwnd);
+
+        if (IsMailbird(process))
+        {
+            var title = WindowTitle(hwnd);
+            if (LooksLikeInboxOrMainWindow(title)) return false;
+
+            // Explicitly filter main application windows (and their app-like
+            // siblings). A secondary popup may be owned by the main window.
+            bool hasOwner = GetWindow(hwnd, GwOwner) != IntPtr.Zero;
+            bool likelyPopupClass = cls.Contains("popup", StringComparison.OrdinalIgnoreCase) ||
+                cls.Contains("toast", StringComparison.OrdinalIgnoreCase) ||
+                cls.Contains("notify", StringComparison.OrdinalIgnoreCase) ||
+                cls.Contains("tooltip", StringComparison.OrdinalIgnoreCase);
+            if (!hasOwner && !likelyPopupClass) return false;
+            provenance = "Mailbird secondary popup, class=" + cls[..Math.Min(cls.Length, 65)];
+            return true;
+        }
+
+        if (IsShellHost(process))
+        {
+            bool likelyShellToast = cls.Contains("toast", StringComparison.OrdinalIgnoreCase) ||
+                cls.Contains("notification", StringComparison.OrdinalIgnoreCase) ||
+                cls.Contains("DesktopWindowContentBridge", StringComparison.OrdinalIgnoreCase);
+            if (!likelyShellToast || !MailbirdNamedToast(hwnd)) return false;
+            provenance = "Windows-hosted Mailbird-labelled popup, class=" +
+                         cls[..Math.Min(cls.Length, 65)];
+            return true;
+        }
+        return false;
+    }
+
+    private void PollWindows()
     {
         if (_disposed) return;
-        try
-        {
-            if (sender is not AutomationElement element) return;
-            string process = ProcessName(element.Current.ProcessId);
-            string className = element.Current.ClassName ?? "";
-            string name = element.Current.Name ?? "";
-            bool fromMailbird = IsMailbird(process);
-            bool fromShell = IsShell(process);
-            if (!fromMailbird && !fromShell) return;
+        _polls++;
+        var now = DateTime.UtcNow;
+        var visible = new HashSet<IntPtr>();
+        bool sawMailbird = false;
 
-            lock (_gate) _uiaEvents++;
-            bool mentionsMailbird = name.Contains("mailbird", StringComparison.OrdinalIgnoreCase);
-            if (!mentionsMailbird && fromShell)
+        EnumWindows((hwnd, _) =>
+        {
+            if (_disposed) return false;
+            try
             {
-                var children = element.FindAll(TreeScope.Children, Condition.TrueCondition);
-                for (int i = 0; i < Math.Min(children.Count, 18); i++)
-                    mentionsMailbird |= (children[i].Current.Name ?? "")
-                        .Contains("mailbird", StringComparison.OrdinalIgnoreCase);
+                if (!IsWindowVisible(hwnd)) return true;
+                GetWindowThreadProcessId(hwnd, out uint pid);
+                string process = GetProcessName(pid);
+                if (IsMailbird(process))
+                {
+                    sawMailbird = true;
+                    _mailbirdWindows++;
+                }
+                if (!IsMailbird(process) && !IsShellHost(process)) return true;
+
+                if (!IsValidCandidate(hwnd, out string provenance)) return true;
+                visible.Add(hwnd);
+                if (!_seen.TryGetValue(hwnd, out var entry))
+                {
+                    entry = new Candidate
+                    {
+                        FirstSeenUtc = now,
+                        WasPreexisting = !_primed || now < _warmUntil
+                    };
+                    _seen[hwnd] = entry;
+                    _candidates++;
+                    Record("Observed " + provenance +
+                           (entry.WasPreexisting ? " (baseline/initializing)" : ""));
+                }
+
+                // Toast must be visible for at least one extra scan and arrive
+                // AFTER the initial baseline. Cooldown handles bursty emails.
+                if (!entry.AlreadyReported && !entry.WasPreexisting &&
+                    (now - entry.FirstSeenUtc).TotalMilliseconds >= 550 &&
+                    (now - _lastAlert).TotalSeconds >= 12)
+                {
+                    entry.AlreadyReported = true;
+                    _lastAlert = now;
+                    _alerts++;
+                    Record("NEW MAIL-LIKE POPUP", provenance + " -> sprite");
+                    _onAlert();
+                }
             }
+            catch { }
+            return true;
+        }, IntPtr.Zero);
 
-            bool suggestsAlert = name.Contains("new mail", StringComparison.OrdinalIgnoreCase)
-                || name.Contains("new message", StringComparison.OrdinalIgnoreCase)
-                || className.Contains("toast", StringComparison.OrdinalIgnoreCase)
-                || className.Contains("notification", StringComparison.OrdinalIgnoreCase);
+        if (sawMailbird && !_mailbirdWasPresent) Record("Mailbird process was observed");
+        _mailbirdWasPresent = sawMailbird;
 
-            Record("UIA window open", (fromMailbird ? "Mailbird" : "Windows shell") +
-                " class=" + ScrubClass(className) +
-                (mentionsMailbird ? " Mailbird-label detected" : ""));
-
-            // Window-open events alone do not prove a new message arrived.
-            // We intentionally do not fire an animation here.
-        }
-        catch { }
+        // Remove vanished candidates. A new pop-up at a reused HWND can then
+        // be treated as a fresh event, but not a persistent background window.
+        foreach (var oldHandle in _seen.Keys.Where(handle => !visible.Contains(handle)).ToList())
+            _seen.Remove(oldHandle);
     }
 
-    private static string ScrubClass(string cls)
-    {
-        // Class names are not message content; bound length for easy sharing.
-        if (cls.Length > 70) return cls[..70];
-        return cls.Replace("\r", "").Replace("\n", "");
-    }
-
-    private void FoundPossibleAlert()
-    {
-        bool fire;
-        lock (_gate)
-        {
-            fire = !_disposed && (DateTime.UtcNow - _lastMatch).TotalSeconds >= 12;
-            if (fire)
-            {
-                _lastMatch = DateTime.UtcNow;
-                _matches++;
-            }
-        }
-        if (fire)
-        {
-            Record("POSSIBLE EMAIL ALERT", "animation requested");
-            _onAlert();
-        }
-    }
-
-    private void Record(string eventName, string description)
+    private void Record(string what)
     {
         lock (_gate)
         {
             if (_disposed) return;
-            string key = eventName + ":" + description;
-            var now = DateTime.UtcNow;
-            if (_logThrottle.TryGetValue(key, out var last) &&
-                (now - last).TotalSeconds < 2) return;
-            _logThrottle[key] = now;
-            if (_logThrottle.Count > 200) _logThrottle.Clear();
-
-            _recent.Enqueue(DateTime.Now.ToString("HH:mm:ss") + "  " +
-                eventName + " — " + description);
-            while (_recent.Count > 55) _recent.Dequeue();
+            _recent.Enqueue(DateTime.Now.ToString("HH:mm:ss") + " " + what);
+            while (_recent.Count > 50) _recent.Dequeue();
         }
     }
-
 
     /// <summary>
     /// On-demand, READ-ONLY check of the Windows taskbar accessibility tree.
@@ -344,18 +387,22 @@ internal sealed class MailbirdWatcher : IDisposable
         return result;
     }
 
+
     public string GetDiagnosticReport()
     {
         lock (_gate)
         {
-            return "MailSprite 0.3 - detection diagnostics\n" +
-                "Started: " + _start.ToString("yyyy-MM-dd HH:mm:ss") + "\n" +
-                "Mailbird native window events: " + _mailbirdEvents + "\n" +
-                "Windows shell candidate events: " + _shellEvents + "\n" +
-                "UI Automation window opens: " + _uiaEvents + "\n" +
-                "Possible alerts detected: " + _matches + "\n\n" +
-                "Recent events (window class names only; NO emails, subjects, or senders):\n" +
-                string.Join("\n", _recent);
+            return "MailSprite 0.4 - Mailbird tray popup detector\n" +
+                "Started: " + _started.ToString("yyyy-MM-dd HH:mm:ss") + "\n" +
+                "Polling rounds: " + _polls + "\n" +
+                "Mailbird windows encountered during polling: " + _mailbirdWindows + "\n" +
+                "Windows shell show/alert events (diagnostic only): " + _shellEvents + "\n" +
+                "Small lower-right candidate windows seen: " + _candidates + "\n" +
+                "Notifications triggering an animation: " + _alerts + "\n\n" +
+                "Recent (NO email text, subject, or sender):\n" +
+                string.Join("\n", _recent) + "\n\n" +
+                "If candidates stay at zero when mail arrives, Mailbird may not " +
+                "show a separate popup, or Windows may expose it differently.";
         }
     }
 
@@ -363,9 +410,9 @@ internal sealed class MailbirdWatcher : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        _pollTimer.Stop();
         foreach (var hook in _hooks) if (hook != IntPtr.Zero) UnhookWinEvent(hook);
         _hooks.Clear();
-        try { Automation.RemoveAutomationEventHandler(WindowPattern.WindowOpenedEvent, _root, _uiaHandler); }
-        catch { }
+        _seen.Clear();
     }
 }
