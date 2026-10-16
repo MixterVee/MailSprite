@@ -8,9 +8,10 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>MailSprite</AssemblyName>
     <RootNamespace>MailSprite</RootNamespace>
-    <Version>0.7.0</Version>
+    <Version>0.8.0</Version>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="WpfAnimatedGif" Version="2.0.2" />
     <Reference Include="UIAutomationClient" />
     <Reference Include="UIAutomationTypes" />
   </ItemGroup>

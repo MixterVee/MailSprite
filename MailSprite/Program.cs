@@ -39,6 +39,9 @@ internal sealed class MailSpriteSettings
     public bool AutoMonitor { get; set; } = false;
     public int PendingAlerts { get; set; } = 0;
     public int SettingsVersion { get; set; } = 0;
+    public string RecordedWavPath { get; set; } = "";
+    public string CustomGifPath { get; set; } = "";
+    public string AnnouncementMode { get; set; } = "Off";
 
     private static string SettingsPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MailSprite", "settings.json");
@@ -91,10 +94,11 @@ internal sealed class TrayApp : IDisposable
         _icon.DoubleClick += (_, _) => ShowPreview(_settings.Character);
         // Earlier versions only offered cartoon characters. Switch the
         // existing installation to the new restrained default once.
-        if (_settings.SettingsVersion < 7)
+        if (_settings.SettingsVersion < 8)
         {
-            _settings.Character = "Elegant";
-            _settings.SettingsVersion = 7;
+            _settings.Character = "Minimal";
+            _settings.AnnouncementMode = _settings.Voice ? "Windows" : "Off";
+            _settings.SettingsVersion = 8;
             _settings.Save();
         }
         BuildMenu();
@@ -117,21 +121,29 @@ internal sealed class TrayApp : IDisposable
     private void BuildMenu()
     {
         var menu = new Forms.ContextMenuStrip();
-        menu.Items.Add("MailSprite 0.7 - Stay visible").Enabled = false;
+        menu.Items.Add("MailSprite 0.8 - Stay visible").Enabled = false;
         menu.Items.Add(new Forms.ToolStripSeparator());
-        menu.Items.Add("Test: Elegant notice (new)", null, (_, _) => ShowPreview("Elegant"));
+        menu.Items.Add("Test: Minimal notice", null, (_, _) => ShowPreview("Minimal"));
+        menu.Items.Add("Test: Elegant notice", null, (_, _) => ShowPreview("Elegant"));
+        menu.Items.Add("Test: Custom animated GIF", null, (_, _) => ShowPreview("Custom"));
         menu.Items.Add("Test: Waving Butler (classic)", null, (_, _) => ShowPreview("Butler"));
         menu.Items.Add("Test: Flying Envelope (classic)", null, (_, _) => ShowPreview("Envelope"));
+        menu.Items.Add("Clear preview", null, (_, _) => _preview?.Clear());
         menu.Items.Add(new Forms.ToolStripSeparator());
 
         var character = new Forms.ToolStripMenuItem("Default animation");
-        character.DropDownItems.Add(new Forms.ToolStripMenuItem("Elegant mail notice (recommended)", null, (_, _) => SetCharacter("Elegant"))
+        character.DropDownItems.Add(new Forms.ToolStripMenuItem("Minimal alert (recommended)", null, (_, _) => SetCharacter("Minimal"))
+        { Checked = _settings.Character == "Minimal" });
+        character.DropDownItems.Add(new Forms.ToolStripMenuItem("Custom animated GIF", null, (_, _) => SetCharacter("Custom"))
+        { Checked = _settings.Character == "Custom", Enabled = File.Exists(_settings.CustomGifPath) });
+        character.DropDownItems.Add(new Forms.ToolStripMenuItem("Elegant mail notice", null, (_, _) => SetCharacter("Elegant"))
         { Checked = _settings.Character == "Elegant" });
         character.DropDownItems.Add(new Forms.ToolStripMenuItem("Waving Butler (classic)", null, (_, _) => SetCharacter("Butler"))
         { Checked = _settings.Character == "Butler" });
         character.DropDownItems.Add(new Forms.ToolStripMenuItem("Flying Envelope (classic)", null, (_, _) => SetCharacter("Envelope"))
         { Checked = _settings.Character == "Envelope" });
         menu.Items.Add(character);
+        menu.Items.Add("Choose custom animated GIF...", null, (_, _) => ChooseGif());
 
         var duration = new Forms.ToolStripMenuItem("Timed alert duration (if auto-hide enabled)");
         foreach (int seconds in new[] { 4, 7, 10 })
@@ -181,12 +193,17 @@ internal sealed class TrayApp : IDisposable
             SaveAndRefresh();
         }) { Checked = _settings.Sound });
 
-        menu.Items.Add(new Forms.ToolStripMenuItem("Speak: You've got mail!", null, (_, _) =>
-        {
-            _settings.Voice = !_settings.Voice;
-            SaveAndRefresh();
-        }) { Checked = _settings.Voice });
-
+        var speechMenu = new Forms.ToolStripMenuItem("Voice announcement");
+        speechMenu.DropDownItems.Add(new Forms.ToolStripMenuItem("Off", null,
+            (_, _) => SetSpeechMode("Off")) { Checked = _settings.AnnouncementMode == "Off" });
+        speechMenu.DropDownItems.Add(new Forms.ToolStripMenuItem("Windows system voice", null,
+            (_, _) => SetSpeechMode("Windows")) { Checked = _settings.AnnouncementMode == "Windows" });
+        speechMenu.DropDownItems.Add(new Forms.ToolStripMenuItem("My recorded WAV", null,
+            (_, _) => SetSpeechMode("Wav")) { Checked = _settings.AnnouncementMode == "Wav",
+            Enabled = File.Exists(_settings.RecordedWavPath) });
+        speechMenu.DropDownItems.Add("Choose WAV announcement...", null,
+            (_, _) => ChooseWav());
+        menu.Items.Add(speechMenu);
         menu.Items.Add(new Forms.ToolStripSeparator());
         menu.Items.Add("Enable Windows notification listener (permission)", null,
             async (_, _) => await EnableWindowsNotifications());
@@ -212,7 +229,7 @@ internal sealed class TrayApp : IDisposable
 
         menu.Items.Add("About notification access", null, (_, _) =>
             System.Windows.MessageBox.Show(
-                "MailSprite 0.7\n\nUses the Windows notification listener API, not taskbar badges or email logins." +
+                "MailSprite 0.8\n\nUses the Windows notification listener API, not taskbar badges or email logins." +
                 "\n\nWindows may require an MSIX package identity for notification access. If access is " +
                 "denied or notifications remain invisible, copy the diagnostic report and we'll package the app." +
                 "\n\nMailSprite checks notification origin only. It does not read subjects, senders or bodies.",
@@ -222,6 +239,79 @@ internal sealed class TrayApp : IDisposable
         var old = _icon.ContextMenuStrip;
         _icon.ContextMenuStrip = menu;
         old?.Dispose();
+    }
+
+    private void SetSpeechMode(string mode)
+    {
+        _settings.AnnouncementMode = mode;
+        SaveAndRefresh();
+    }
+
+    private void ChooseWav()
+    {
+        var picker = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Choose a natural voice announcement (WAV)",
+            Filter = "WAV recording (*.wav)|*.wav", CheckFileExists = true
+        };
+        if (picker.ShowDialog() != true) return;
+        _settings.RecordedWavPath = picker.FileName;
+        _settings.AnnouncementMode = "Wav";
+        SaveAndRefresh();
+        _ = Task.Run(() => PlayWav(picker.FileName));
+    }
+
+    private void ChooseGif()
+    {
+        var picker = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Choose your own animated GIF",
+            Filter = "Animated GIF (*.gif)|*.gif", CheckFileExists = true
+        };
+        if (picker.ShowDialog() != true) return;
+        if (new FileInfo(picker.FileName).Length > 35 * 1024 * 1024)
+        {
+            System.Windows.MessageBox.Show("Choose a GIF smaller than 35 MB.", "MailSprite");
+            return;
+        }
+        _settings.CustomGifPath = picker.FileName;
+        _settings.Character = "Custom";
+        SaveAndRefresh();
+        RefreshWaitingAlert();
+        ShowPreview("Custom");
+    }
+
+    private static void PlayWav(string path)
+    {
+        try
+        {
+            if (!File.Exists(path)) return;
+            using var player = new SoundPlayer(path);
+            player.PlaySync();
+        }
+        catch { }
+    }
+
+    private void Speak()
+    {
+        if (_settings.AnnouncementMode == "Off") return;
+        if (_settings.AnnouncementMode == "Wav")
+        {
+            var path = _settings.RecordedWavPath;
+            _ = Task.Run(() => PlayWav(path));
+            return;
+        }
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                var type = Type.GetTypeFromProgID("SAPI.SpVoice");
+                if (type is null) return;
+                dynamic voice = Activator.CreateInstance(type)!;
+                voice.Speak("You've got mail!", 0);
+            }
+            catch { }
+        });
     }
 
     private void SetCharacter(string character)
@@ -241,28 +331,21 @@ internal sealed class TrayApp : IDisposable
     private void PlaySound()
     {
         if (_settings.Sound) SystemSounds.Asterisk.Play();
-        if (_settings.Voice)
-        {
-            _ = Task.Run(() =>
-            {
-                try
-                {
-                    var type = Type.GetTypeFromProgID("SAPI.SpVoice");
-                    if (type is null) return;
-                    dynamic voice = Activator.CreateInstance(type)!;
-                    voice.Speak("You've got mail!", 0);
-                }
-                catch { }
-            });
-        }
+        Speak();
     }
 
     private void ShowPreview(string kind)
     {
         if (_disposed) return;
         _preview?.Close();
+        if (kind == "Custom" && !File.Exists(_settings.CustomGifPath))
+        {
+            System.Windows.MessageBox.Show("Choose an animated GIF first.", "MailSprite");
+            return;
+        }
         var preview = new SpriteWindow(kind, 5, _settings.Placement,
-            persistent: false, count: 1);
+            persistent: _settings.KeepVisibleUntilCleared, count: 1,
+            gifPath: _settings.CustomGifPath, preview: true);
         _preview = preview;
         preview.Closed += (_, _) =>
         {
@@ -307,7 +390,7 @@ internal sealed class TrayApp : IDisposable
         var alert = new SpriteWindow(_settings.Character,
             Math.Clamp(_settings.Seconds, 3, 20), _settings.Placement,
             persistent: _settings.KeepVisibleUntilCleared,
-            count: _settings.PendingAlerts);
+            count: _settings.PendingAlerts, gifPath: _settings.CustomGifPath);
         _sprite = alert;
         alert.ClearedByUser += () =>
         {
