@@ -1,29 +1,39 @@
 # MailSprite
 
-Windows tray app restoring playful IncrediMail-inspired notifications without replacing Mailbird.
+MailSprite uses the **Windows Notification Listener API** to detect Mailbird arrivals and show an optional IncrediMail-inspired desktop alert. No Gmail/Outlook sign-in is needed.
 
-## Test 6 — animated characters and positioning
+## Test 7 — persistent mail alerts and cleaner visuals
 
-**The user confirmed that Test 5 automatically played the butler animation precisely when the Mailbird Windows notification arrived.** The working official Windows notification listener is retained, unchanged, in Test 6.
+The previous cartoon-style characters felt cheesy. Test 7 makes a new **Elegant Mail Notice** the default: a compact dark-blue card, a small envelope glyph, restrained fade-and-slide entrance, and no cartoon sparkles or exaggerated bounce. Classic butler and flying-envelope previews remain available.
 
-### Changes
+### Stay visible until cleared
 
-- Butler vector artwork refreshed: expressive face, curled mustache, bow tie, waistcoat buttons, outlined white gloves and a gold-banded top hat.
-- Smoother spring-like entrance, independently waving arm, hat tip, head nod and eye blink.
-- Flying envelope character with independently fluttering wings and a lively entrance.
-- Speech bubble pop animation, golden sparkles and gradual fade-away.
-- **Animation position** tray menu with Left of Windows notifications (default), Bottom left, Top left, Top right.
-- Default position reserves horizontal space for a typical Mailbird/Windows notification on the bottom-right. Narrow desktops fall back to top-left to prevent overlap.
-- Click a character to dismiss with a quick fade.
-- Previous duration, sound, voice and Windows startup settings remain available.
+The new **Keep visible until cleared** option is ON by default. When a new Mailbird notification arrives:
 
-### How to test
+- MailSprite displays a compact card that persists indefinitely while the app remains running.
+- Additional detected notifications update the existing card, rather than opening a stack of windows.
+- Click the alert or use tray menu **Clear waiting mail alert** to dismiss.
+- Counts represent **MailSprite alerts since the last clear**, NOT the live unread count of Gmail/Outlook/Mailbird.
+- The count is stored in %APPDATA%/MailSprite/settings.json; a pending card can be restored after restarting MailSprite.
+- With the option OFF, the alert auto-hides according to the existing timed-duration setting.
 
-1. Exit your previous MailSprite completely via the tray icon.
-2. From [GitHub Actions](https://github.com/MixterVee/MailSprite/actions), download the latest successful **MailSprite-Windows-x64** artifact.
-3. Extract and run MailSprite.exe.
-4. Use **Test: Waving Butler** and **Test: Flying Envelope** to preview changes.
-5. Use **Animation position** to choose where the character appears.
-6. Select **Enable Windows notification listener (permission)** and send a test email to confirm detection continues to work.
+### Motion and burn-in considerations
 
-The notification listener remains a manual enable action after launch, as in Test 5. MailSprite does not require Gmail or Outlook credentials, and does not inspect message text, senders or subjects. Existing art is original vector work rather than imported copyrighted IncrediMail assets.
+In persistent mode, the entire alert window drifts to another location by around 10–25 pixels every 50 seconds, using a slow 2.4-second move. This helps avoid a *completely static* overlay but **does not guarantee prevention of OLED burn-in**. Use Windows display-off/sleep settings when away for extended periods; you will still see the reminder when the display comes back on.
+
+### Notification monitoring
+
+The Test 5/6 Windows notification listener is preserved. After granting access once, MailSprite tries to restart monitoring on its next launch automatically. Stop monitoring through the tray menu to disable this auto-start. To run at Windows login, separately enable **Start with Windows**.
+
+### Test
+
+1. Exit MailSprite 0.6.
+2. Download the latest successful Windows x64 ZIP from [GitHub Actions](https://github.com/MixterVee/MailSprite/actions) and run MailSprite.exe.
+3. In the tray menu select **Default animation → Elegant mail notice**.
+4. Enable **Keep visible until cleared** and preview it with **Test: Elegant notice** (preview always auto-closes after 5 seconds).
+5. Ensure **Enable Windows notification listener (permission)** is active and send an email.
+6. Confirm the real incoming-mail card remains until you click it, then send a second email to ensure it appears again.
+
+The app never retrieves message bodies or subjects. Windows may show notification details to authorized listeners, but MailSprite only matches their originating app.
+
+If you prefer real animated characters instead of the cleaner card, we should use professionally illustrated animation assets in a later build instead of crude procedural vector drawings.

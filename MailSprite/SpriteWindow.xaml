@@ -7,6 +7,67 @@
         ShowActivated="False" WindowStartupLocation="Manual"
         MouseLeftButtonUp="Window_MouseLeftButtonUp">
     <Grid x:Name="Root" Opacity="0" ClipToBounds="False">
+        <!-- Understated new default: compact floating email status card. -->
+        <Border x:Name="ElegantNotice" Visibility="Collapsed"
+                Width="350" Height="150" VerticalAlignment="Center"
+                HorizontalAlignment="Center" CornerRadius="21"
+                BorderBrush="#FF435F85" BorderThickness="1"
+                SnapsToDevicePixels="True" RenderTransformOrigin="0.5,0.5">
+            <Border.Background>
+                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                    <GradientStop Color="#FF172438" Offset="0"/>
+                    <GradientStop Color="#FF223854" Offset="1"/>
+                </LinearGradientBrush>
+            </Border.Background>
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="17" ShadowDepth="5" Opacity="0.32"
+                                  Color="#FF0B1729"/>
+            </Border.Effect>
+            <Border.RenderTransform>
+                <TranslateTransform x:Name="ElegantCardMove" Y="16"/>
+            </Border.RenderTransform>
+            <Grid Margin="19,18,17,16">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="66"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Border Width="58" Height="58" VerticalAlignment="Center"
+                        HorizontalAlignment="Left" CornerRadius="15"
+                        Background="#FF315D94" RenderTransformOrigin="0.5,0.5">
+                    <Border.RenderTransform>
+                        <ScaleTransform x:Name="MailGlyphScale" ScaleX="1" ScaleY="1"/>
+                    </Border.RenderTransform>
+                    <Viewbox Width="37" Height="37" HorizontalAlignment="Center"
+                             VerticalAlignment="Center">
+                        <Canvas Width="40" Height="40">
+                            <Path Data="M 4,11 L 36,11 36,30 Q 36,33 33,33 L 7,33 Q 4,33 4,30 Z"
+                                  Fill="Transparent" Stroke="#FFF4F8FF" StrokeThickness="2.5"
+                                  StrokeLineJoin="Round"/>
+                            <Path Data="M 5,12 L 20,23 35,12"
+                                  Stroke="#FFF4F8FF" StrokeThickness="2.5"
+                                  StrokeLineJoin="Round" Fill="Transparent"/>
+                        </Canvas>
+                    </Viewbox>
+                </Border>
+                <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="10,0,0,0">
+                    <TextBlock Text="MAILSPRITE" Foreground="#FF8AB6EA"
+                               FontSize="10" FontWeight="SemiBold" FontFamily="Segoe UI"
+                               Margin="0,0,0,6"/>
+                    <TextBlock Text="You've got mail" Foreground="#FFF5F9FF"
+                               FontFamily="Segoe UI" FontSize="22"
+                               FontWeight="SemiBold" Margin="0,0,0,5"/>
+                    <TextBlock x:Name="AlertCountText" Text="New mail alert waiting"
+                               FontFamily="Segoe UI" FontSize="12"
+                               Foreground="#FFD5E1F0"/>
+                    <TextBlock x:Name="ClearHintText" Text="Click to clear"
+                               FontFamily="Segoe UI" FontSize="11"
+                               Foreground="#FF96ADC6" Margin="0,9,0,0"/>
+                </StackPanel>
+                <Rectangle Grid.ColumnSpan="2" Height="3" RadiusX="1.5"
+                           RadiusY="1.5" Fill="#FF79B3F6" VerticalAlignment="Bottom"
+                           Margin="1,0,1,-12" Opacity="0.85"/>
+            </Grid>
+        </Border>
         <!-- Warm message bubble, scaled independently for a playful pop-in. -->
         <Border x:Name="MessageBubble" HorizontalAlignment="Center"
                 VerticalAlignment="Top" Margin="0,14,0,0" Padding="23,13,23,12"
@@ -32,7 +93,7 @@
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center"
                             Margin="0,5,0,0">
                     <Ellipse Width="7" Height="7" Fill="#FFE6B64B" Margin="0,0,7,0"/>
-                    <TextBlock Text="SPECIAL DELIVERY" FontFamily="Segoe UI"
+                    <TextBlock x:Name="LegacySubtitle" Text="SPECIAL DELIVERY" FontFamily="Segoe UI"
                                FontSize="11" FontWeight="SemiBold"
                                Foreground="#FF8B6841"
                                VerticalAlignment="Center"/>
@@ -40,7 +101,7 @@
                 </StackPanel>
             </StackPanel>
         </Border>
-        <Path Data="M 0,0 L 22,0 L 5,15 Z" HorizontalAlignment="Center"
+        <Path x:Name="BubbleTail" Data="M 0,0 L 22,0 L 5,15 Z" HorizontalAlignment="Center"
               VerticalAlignment="Top" Margin="-36,103,0,0" Fill="#FFFFF5DF"
               Stroke="#FFE7B74E" StrokeThickness="1"/>
 

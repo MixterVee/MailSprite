@@ -32,9 +32,13 @@ internal sealed class MailSpriteSettings
     public bool Voice { get; set; } = false;
     public bool WatchMailbird { get; set; } = false; // Legacy setting; ignored as a safety measure.
     public bool StartWithWindows { get; set; } = false;
-    public string Character { get; set; } = "Butler";
+    public string Character { get; set; } = "Elegant";
     public int Seconds { get; set; } = 7;
     public string Placement { get; set; } = "LeftOfNotification";
+    public bool KeepVisibleUntilCleared { get; set; } = true;
+    public bool AutoMonitor { get; set; } = false;
+    public int PendingAlerts { get; set; } = 0;
+    public int SettingsVersion { get; set; } = 0;
 
     private static string SettingsPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MailSprite", "settings.json");
@@ -71,6 +75,7 @@ internal sealed class TrayApp : IDisposable
     private readonly MailSpriteSettings _settings = MailSpriteSettings.Load();
     private WindowsNotificationWatcher? _notificationWatcher;
     private SpriteWindow? _sprite;
+    private SpriteWindow? _preview;
     private DateTime _lastNotice = DateTime.MinValue;
     private bool _disposed;
 
@@ -83,8 +88,23 @@ internal sealed class TrayApp : IDisposable
             Text = "MailSprite - animated email notifier",
             Visible = true
         };
-        _icon.DoubleClick += (_, _) => ShowSprite(_settings.Character);
+        _icon.DoubleClick += (_, _) => ShowPreview(_settings.Character);
+        // Earlier versions only offered cartoon characters. Switch the
+        // existing installation to the new restrained default once.
+        if (_settings.SettingsVersion < 7)
+        {
+            _settings.Character = "Elegant";
+            _settings.SettingsVersion = 7;
+            _settings.Save();
+        }
         BuildMenu();
+        _app.Dispatcher.BeginInvoke(new Action(async () =>
+        {
+            if (_settings.KeepVisibleUntilCleared && _settings.PendingAlerts > 0)
+                ShowWaitingAlert(playSound: false);
+            if (_settings.AutoMonitor)
+                await EnableWindowsNotifications(silent: true);
+        }));
         // Old false-positive window watchers never auto-start. Explicit
         // Windows permission is required for the new notification listener.
         if (_settings.WatchMailbird)
@@ -97,20 +117,23 @@ internal sealed class TrayApp : IDisposable
     private void BuildMenu()
     {
         var menu = new Forms.ContextMenuStrip();
-        menu.Items.Add("MailSprite 0.6 - Animation polish").Enabled = false;
+        menu.Items.Add("MailSprite 0.7 - Stay visible").Enabled = false;
         menu.Items.Add(new Forms.ToolStripSeparator());
-        menu.Items.Add("Test: Waving Butler", null, (_, _) => ShowSprite("Butler"));
-        menu.Items.Add("Test: Flying Envelope", null, (_, _) => ShowSprite("Envelope"));
+        menu.Items.Add("Test: Elegant notice (new)", null, (_, _) => ShowPreview("Elegant"));
+        menu.Items.Add("Test: Waving Butler (classic)", null, (_, _) => ShowPreview("Butler"));
+        menu.Items.Add("Test: Flying Envelope (classic)", null, (_, _) => ShowPreview("Envelope"));
         menu.Items.Add(new Forms.ToolStripSeparator());
 
         var character = new Forms.ToolStripMenuItem("Default animation");
-        character.DropDownItems.Add(new Forms.ToolStripMenuItem("Waving Butler", null, (_, _) => SetCharacter("Butler"))
+        character.DropDownItems.Add(new Forms.ToolStripMenuItem("Elegant mail notice (recommended)", null, (_, _) => SetCharacter("Elegant"))
+        { Checked = _settings.Character == "Elegant" });
+        character.DropDownItems.Add(new Forms.ToolStripMenuItem("Waving Butler (classic)", null, (_, _) => SetCharacter("Butler"))
         { Checked = _settings.Character == "Butler" });
-        character.DropDownItems.Add(new Forms.ToolStripMenuItem("Flying Envelope", null, (_, _) => SetCharacter("Envelope"))
+        character.DropDownItems.Add(new Forms.ToolStripMenuItem("Flying Envelope (classic)", null, (_, _) => SetCharacter("Envelope"))
         { Checked = _settings.Character == "Envelope" });
         menu.Items.Add(character);
 
-        var duration = new Forms.ToolStripMenuItem("Animation duration");
+        var duration = new Forms.ToolStripMenuItem("Timed alert duration (if auto-hide enabled)");
         foreach (int seconds in new[] { 4, 7, 10 })
         {
             int current = seconds;
@@ -136,11 +159,31 @@ internal sealed class TrayApp : IDisposable
             {
                 _settings.Placement = position;
                 SaveAndRefresh();
-                ShowSprite(_settings.Character);
+                if (_sprite?.IsVisible == true)
+                {
+                    _sprite.Close();
+                    _sprite = null;
+                    if (_settings.PendingAlerts > 0) ShowWaitingAlert(playSound: false);
+                }
+                else ShowPreview(_settings.Character);
             }) { Checked = _settings.Placement == position });
         }
         menu.Items.Add(placement);
 
+        menu.Items.Add(new Forms.ToolStripMenuItem("Keep visible until cleared", null, (_, _) =>
+        {
+            _settings.KeepVisibleUntilCleared = !_settings.KeepVisibleUntilCleared;
+            _settings.Save();
+            if (_sprite is not null)
+            {
+                _sprite.Close();
+                _sprite = null;
+                if (_settings.PendingAlerts > 0) ShowWaitingAlert(playSound: false);
+            }
+            BuildMenu();
+        }) { Checked = _settings.KeepVisibleUntilCleared });
+        menu.Items.Add("Clear waiting mail alert", null, (_, _) => ClearWaitingAlert());
+        menu.Items.Add(new Forms.ToolStripSeparator());
         menu.Items.Add(new Forms.ToolStripMenuItem("Sound effect", null, (_, _) =>
         {
             _settings.Sound = !_settings.Sound;
@@ -160,6 +203,8 @@ internal sealed class TrayApp : IDisposable
             (_, _) => CopyDiagnostics());
         menu.Items.Add("Stop notification listener", null, (_, _) =>
         {
+            _settings.AutoMonitor = false;
+            _settings.Save();
             StopWatcher();
             System.Windows.MessageBox.Show("Notification monitoring stopped.", "MailSprite");
         });
@@ -176,7 +221,7 @@ internal sealed class TrayApp : IDisposable
 
         menu.Items.Add("About notification access", null, (_, _) =>
             System.Windows.MessageBox.Show(
-                "MailSprite 0.6\n\nUses the Windows notification listener API, not taskbar badges or email logins." +
+                "MailSprite 0.7\n\nUses the Windows notification listener API, not taskbar badges or email logins." +
                 "\n\nWindows may require an MSIX package identity for notification access. If access is " +
                 "denied or notifications remain invisible, copy the diagnostic report and we'll package the app." +
                 "\n\nMailSprite checks notification origin only. It does not read subjects, senders or bodies.",
@@ -192,6 +237,12 @@ internal sealed class TrayApp : IDisposable
     {
         _settings.Character = character;
         SaveAndRefresh();
+        if (_sprite?.IsVisible == true)
+        {
+            _sprite.Close();
+            _sprite = null;
+            ShowWaitingAlert(playSound: false);
+        }
     }
 
     private void SaveAndRefresh()
@@ -200,42 +251,98 @@ internal sealed class TrayApp : IDisposable
         BuildMenu();
     }
 
-    private void ShowSprite(string kind)
+    private void PlaySound()
     {
-        if (_disposed) return;
-        try
+        if (_settings.Sound) SystemSounds.Asterisk.Play();
+        if (_settings.Voice)
         {
-            _sprite?.Close();
-            var window = new SpriteWindow(kind, Math.Clamp(_settings.Seconds, 3, 20), _settings.Placement);
-            _sprite = window;
-            window.Closed += (_, _) =>
+            _ = Task.Run(() =>
             {
-                if (ReferenceEquals(_sprite, window)) _sprite = null;
-            };
-            window.Show();
-            if (_settings.Sound) SystemSounds.Asterisk.Play();
-            if (_settings.Voice)
-            {
-                _ = Task.Run(() =>
+                try
                 {
-                    try
-                    {
-                        var type = Type.GetTypeFromProgID("SAPI.SpVoice");
-                        if (type is null) return;
-                        dynamic voice = Activator.CreateInstance(type)!;
-                        voice.Speak("You've got mail!", 0);
-                    }
-                    catch { /* Speech is optional if SAPI is unavailable. */ }
-                });
-            }
-        }
-        catch (Exception ex)
-        {
-            System.Windows.MessageBox.Show("Could not show animation: " + ex.Message, "MailSprite");
+                    var type = Type.GetTypeFromProgID("SAPI.SpVoice");
+                    if (type is null) return;
+                    dynamic voice = Activator.CreateInstance(type)!;
+                    voice.Speak("You've got mail!", 0);
+                }
+                catch { }
+            });
         }
     }
 
-    private async Task EnableWindowsNotifications()
+    private void ShowPreview(string kind)
+    {
+        if (_disposed) return;
+        _preview?.Close();
+        var preview = new SpriteWindow(kind, 5, _settings.Placement,
+            persistent: false, count: 1);
+        _preview = preview;
+        preview.Closed += (_, _) =>
+        {
+            if (ReferenceEquals(_preview, preview)) _preview = null;
+        };
+        preview.Show();
+        PlaySound();
+    }
+
+    private void IncomingMail()
+    {
+        if (_disposed) return;
+        // This counts detected MailSprite notifications, not inbox unread mail.
+        _settings.PendingAlerts = Math.Clamp(_settings.PendingAlerts + 1, 1, 9999);
+        _settings.Save();
+        if (_settings.KeepVisibleUntilCleared && _sprite?.IsVisible == true)
+        {
+            _sprite.UpdateCount(_settings.PendingAlerts);
+            PlaySound();
+            return;
+        }
+        ShowWaitingAlert(playSound: true);
+    }
+
+    private void ShowWaitingAlert(bool playSound)
+    {
+        if (_disposed || _settings.PendingAlerts <= 0) return;
+        _sprite?.Close();
+        var alert = new SpriteWindow(_settings.Character,
+            Math.Clamp(_settings.Seconds, 3, 20), _settings.Placement,
+            persistent: _settings.KeepVisibleUntilCleared,
+            count: _settings.PendingAlerts);
+        _sprite = alert;
+        alert.ClearedByUser += () =>
+        {
+            if (ReferenceEquals(_sprite, alert))
+            {
+                _settings.PendingAlerts = 0;
+                _settings.Save();
+            }
+        };
+        alert.Closed += (_, _) =>
+        {
+            if (!ReferenceEquals(_sprite, alert)) return;
+            _sprite = null;
+            if (!_settings.KeepVisibleUntilCleared)
+            {
+                _settings.PendingAlerts = 0;
+                _settings.Save();
+            }
+        };
+        alert.Show();
+        if (playSound) PlaySound();
+    }
+
+    private void ClearWaitingAlert()
+    {
+        _settings.PendingAlerts = 0;
+        _settings.Save();
+        if (_sprite is { } existing)
+        {
+            _sprite = null;
+            existing.Clear();
+        }
+    }
+
+    private async Task EnableWindowsNotifications(bool silent = false)
     {
         if (_notificationWatcher?.IsWatching == true)
         {
@@ -247,12 +354,21 @@ internal sealed class TrayApp : IDisposable
         {
             if ((DateTime.UtcNow - _lastNotice).TotalSeconds < 10) return;
             _lastNotice = DateTime.UtcNow;
-            ShowSprite(_settings.Character);
+            IncomingMail();
         });
         _notificationWatcher = watcher;
         bool enabled = await watcher.RequestAccessAndStartAsync();
         if (!enabled)
         {
+            _settings.AutoMonitor = false;
+            _settings.Save();
+            if (silent)
+            {
+                _icon.ShowBalloonTip(5000, "MailSprite",
+                    "Notification listener did not start. Enable it from the tray menu.",
+                    Forms.ToolTipIcon.Warning);
+                return;
+            }
             System.Windows.MessageBox.Show(
                 "Windows has not started the notification listener. No emails will trigger animations." +
                 "\n\nPlease select 'Copy notification listener diagnostic report' and paste the result here." +
@@ -261,6 +377,9 @@ internal sealed class TrayApp : IDisposable
         }
         else
         {
+            _settings.AutoMonitor = true;
+            _settings.Save();
+            if (silent) return;
             System.Windows.MessageBox.Show(
                 "Notification listener started. Send a NEW email after this dialog closes." +
                 "\n\nIf you don't see the animation, copy the diagnostic report.",
@@ -326,6 +445,7 @@ internal sealed class TrayApp : IDisposable
         _disposed = true;
         StopWatcher();
         _sprite?.Close();
+        _preview?.Close();
         _icon.Visible = false;
         _icon.Dispose();
     }
