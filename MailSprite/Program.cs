@@ -34,6 +34,7 @@ internal sealed class MailSpriteSettings
     public bool StartWithWindows { get; set; } = false;
     public string Character { get; set; } = "Butler";
     public int Seconds { get; set; } = 7;
+    public string Placement { get; set; } = "LeftOfNotification";
 
     private static string SettingsPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MailSprite", "settings.json");
@@ -96,7 +97,7 @@ internal sealed class TrayApp : IDisposable
     private void BuildMenu()
     {
         var menu = new Forms.ContextMenuStrip();
-        menu.Items.Add("MailSprite 0.5 - Windows notification listener").Enabled = false;
+        menu.Items.Add("MailSprite 0.6 - Animation polish").Enabled = false;
         menu.Items.Add(new Forms.ToolStripSeparator());
         menu.Items.Add("Test: Waving Butler", null, (_, _) => ShowSprite("Butler"));
         menu.Items.Add("Test: Flying Envelope", null, (_, _) => ShowSprite("Envelope"));
@@ -120,6 +121,25 @@ internal sealed class TrayApp : IDisposable
             }) { Checked = _settings.Seconds == current });
         }
         menu.Items.Add(duration);
+
+        var placement = new Forms.ToolStripMenuItem("Animation position");
+        foreach (var choice in new (string Value, string Label)[]
+        {
+            ("LeftOfNotification", "Left of Windows notifications (recommended)"),
+            ("BottomLeft", "Bottom left"),
+            ("TopLeft", "Top left"),
+            ("TopRight", "Top right")
+        })
+        {
+            var position = choice.Value;
+            placement.DropDownItems.Add(new Forms.ToolStripMenuItem(choice.Label, null, (_, _) =>
+            {
+                _settings.Placement = position;
+                SaveAndRefresh();
+                ShowSprite(_settings.Character);
+            }) { Checked = _settings.Placement == position });
+        }
+        menu.Items.Add(placement);
 
         menu.Items.Add(new Forms.ToolStripMenuItem("Sound effect", null, (_, _) =>
         {
@@ -156,7 +176,7 @@ internal sealed class TrayApp : IDisposable
 
         menu.Items.Add("About notification access", null, (_, _) =>
             System.Windows.MessageBox.Show(
-                "MailSprite 0.5\n\nUses the Windows notification listener API, not taskbar badges or email logins." +
+                "MailSprite 0.6\n\nUses the Windows notification listener API, not taskbar badges or email logins." +
                 "\n\nWindows may require an MSIX package identity for notification access. If access is " +
                 "denied or notifications remain invisible, copy the diagnostic report and we'll package the app." +
                 "\n\nMailSprite checks notification origin only. It does not read subjects, senders or bodies.",
@@ -186,7 +206,7 @@ internal sealed class TrayApp : IDisposable
         try
         {
             _sprite?.Close();
-            var window = new SpriteWindow(kind, Math.Clamp(_settings.Seconds, 3, 20));
+            var window = new SpriteWindow(kind, Math.Clamp(_settings.Seconds, 3, 20), _settings.Placement);
             _sprite = window;
             window.Closed += (_, _) =>
             {

@@ -1,26 +1,29 @@
 # MailSprite
 
-Windows 11 tray app providing IncrediMail-inspired butler and envelope animations while you keep Mailbird.
+Windows tray app restoring playful IncrediMail-inspired notifications without replacing Mailbird.
 
-## Test 5 — Windows notification listener
+## Test 6 — animated characters and positioning
 
-Your independent **Notification Logger** app recorded real Mailbird notifications even though the prior window popup probes did not. Accordingly, Test 5 stops using window shapes as an email signal. It instead probes Microsoft's official **UserNotificationListener** API.
+**The user confirmed that Test 5 automatically played the butler animation precisely when the Mailbird Windows notification arrived.** The working official Windows notification listener is retained, unchanged, in Test 6.
 
-### Important Windows packaging limitation
+### Changes
 
-Microsoft documents this API as requiring the **User Notification Listener capability** in the application manifest plus explicit user consent. Our first Test 5 build is still an **unpackaged EXE** to see whether the API is even available in this configuration; **do not assume that permission "Allowed" means it works**. Some unpackaged applications can query notifications but can't subscribe to change events, and others cannot see notifications at all. If the diagnostic report shows no app identity or no notifications, the next step will be a properly signed and installed MSIX package with userNotificationListener capability.
+- Butler vector artwork refreshed: expressive face, curled mustache, bow tie, waistcoat buttons, outlined white gloves and a gold-banded top hat.
+- Smoother spring-like entrance, independently waving arm, hat tip, head nod and eye blink.
+- Flying envelope character with independently fluttering wings and a lively entrance.
+- Speech bubble pop animation, golden sparkles and gradual fade-away.
+- **Animation position** tray menu with Left of Windows notifications (default), Bottom left, Top left, Top right.
+- Default position reserves horizontal space for a typical Mailbird/Windows notification on the bottom-right. Narrow desktops fall back to top-left to prevent overlap.
+- Click a character to dismiss with a quick fade.
+- Previous duration, sound, voice and Windows startup settings remain available.
 
-### Testing
+### How to test
 
-1. Fully exit older MailSprite versions from the tray.
-2. Download latest GitHub Actions **MailSprite-Windows-x64** ZIP, extract and run.
-3. Right-click tray icon → **Enable Windows notification listener (permission)**.
-4. If Windows presents a notification access permission request, choose Allow if you're comfortable.
-5. Send yourself an email *after* enabling the listener.
-6. Right-click MailSprite → **Copy notification listener diagnostic report**; paste the text in chat.
+1. Exit your previous MailSprite completely via the tray icon.
+2. From [GitHub Actions](https://github.com/MixterVee/MailSprite/actions), download the latest successful **MailSprite-Windows-x64** artifact.
+3. Extract and run MailSprite.exe.
+4. Use **Test: Waving Butler** and **Test: Flying Envelope** to preview changes.
+5. Use **Animation position** to choose where the character appears.
+6. Select **Enable Windows notification listener (permission)** and send a test email to confirm detection continues to work.
 
-No Gmail or Outlook passwords required. The code reads **notification origin (app name/ID), identifier, and timestamp**, not notification subjects, message bodies or sender addresses. A permissioned listener is inherently capable of accessing all apps' notifications at the OS level; MailSprite deliberately filters to Mailbird and does not save any message content.
-
-Test 5 may need proper packaging before detection works. This release is a diagnostic experiment, **not a claim that email alerts are fixed**.
-
-Official API reference: https://learn.microsoft.com/en-us/windows/uwp/design/shell/tiles-and-notifications/notification-listener
+The notification listener remains a manual enable action after launch, as in Test 5. MailSprite does not require Gmail or Outlook credentials, and does not inspect message text, senders or subjects. Existing art is original vector work rather than imported copyrighted IncrediMail assets.
