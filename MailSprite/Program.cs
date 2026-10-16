@@ -160,11 +160,7 @@ internal sealed class TrayApp : IDisposable
                 _settings.Placement = position;
                 SaveAndRefresh();
                 if (_sprite?.IsVisible == true)
-                {
-                    _sprite.Close();
-                    _sprite = null;
-                    if (_settings.PendingAlerts > 0) ShowWaitingAlert(playSound: false);
-                }
+                    RefreshWaitingAlert();
                 else ShowPreview(_settings.Character);
             }) { Checked = _settings.Placement == position });
         }
@@ -174,12 +170,7 @@ internal sealed class TrayApp : IDisposable
         {
             _settings.KeepVisibleUntilCleared = !_settings.KeepVisibleUntilCleared;
             _settings.Save();
-            if (_sprite is not null)
-            {
-                _sprite.Close();
-                _sprite = null;
-                if (_settings.PendingAlerts > 0) ShowWaitingAlert(playSound: false);
-            }
+            RefreshWaitingAlert();
             BuildMenu();
         }) { Checked = _settings.KeepVisibleUntilCleared });
         menu.Items.Add("Clear waiting mail alert", null, (_, _) => ClearWaitingAlert());
@@ -238,11 +229,7 @@ internal sealed class TrayApp : IDisposable
         _settings.Character = character;
         SaveAndRefresh();
         if (_sprite?.IsVisible == true)
-        {
-            _sprite.Close();
-            _sprite = null;
-            ShowWaitingAlert(playSound: false);
-        }
+            RefreshWaitingAlert();
     }
 
     private void SaveAndRefresh()
@@ -300,10 +287,23 @@ internal sealed class TrayApp : IDisposable
         ShowWaitingAlert(playSound: true);
     }
 
+    private void RefreshWaitingAlert()
+    {
+        // Detach the old window BEFORE closing it, so its Closed callback
+        // cannot mistake a settings refresh for dismissing a timed alert.
+        var previous = _sprite;
+        _sprite = null;
+        previous?.Close();
+        if (_settings.PendingAlerts > 0)
+            ShowWaitingAlert(playSound: false);
+    }
+
     private void ShowWaitingAlert(bool playSound)
     {
         if (_disposed || _settings.PendingAlerts <= 0) return;
-        _sprite?.Close();
+        var previous = _sprite;
+        _sprite = null;
+        previous?.Close();
         var alert = new SpriteWindow(_settings.Character,
             Math.Clamp(_settings.Seconds, 3, 20), _settings.Placement,
             persistent: _settings.KeepVisibleUntilCleared,
