@@ -147,8 +147,10 @@ internal sealed class MailbirdWatcher : IDisposable
 
                 Record(category, "Mailbird class=" + ScrubClass(className) +
                     (smallTopLevel ? " small top-level window" : ""));
-                if (classSuggestsAlert || smallTopLevel)
-                    FoundPossibleAlert();
+                // Diagnostic only: a small Mailbird window can be settings,
+                // account switching, splash screens, or any normal UI popup.
+                // Never infer a new email from window size or class alone.
+                // Confirmed email detection will require a dedicated source.
             }
             else if (eventType == EventObjectShow || eventType == EventSystemAlert)
             {
@@ -161,7 +163,9 @@ internal sealed class MailbirdWatcher : IDisposable
 
                 Record(category, "Windows shell class=" + ScrubClass(className) +
                     (mentionsMailbird ? " Mailbird-label detected" : ""));
-                if (mentionsMailbird) FoundPossibleAlert();
+                // Even shell-hosted popups with Mailbird branding can be
+                // regular menus, taskbar previews or app status windows.
+                // Keep as diagnostic evidence, never fire automatically.
             }
         }
         catch
@@ -221,8 +225,8 @@ internal sealed class MailbirdWatcher : IDisposable
                 " class=" + ScrubClass(className) +
                 (mentionsMailbird ? " Mailbird-label detected" : ""));
 
-            if ((fromMailbird && suggestsAlert) || (fromShell && mentionsMailbird))
-                FoundPossibleAlert();
+            // Window-open events alone do not prove a new message arrived.
+            // We intentionally do not fire an animation here.
         }
         catch { }
     }
@@ -271,11 +275,80 @@ internal sealed class MailbirdWatcher : IDisposable
         }
     }
 
+
+    /// <summary>
+    /// On-demand, READ-ONLY check of the Windows taskbar accessibility tree.
+    /// We do not record element labels (which could contain account names).
+    /// The blue unread number drawn inside a tray icon may not be exposed
+    /// through UI Automation at all. This is a probe, not an alert trigger.
+    /// </summary>
+    public static string ProbeTaskbarBadge()
+    {
+        int nodes = 0, mailbirdMatches = 0, numericLabels = 0;
+        var counts = new List<int>();
+        var errors = new List<string>();
+        try
+        {
+            var root = AutomationElement.RootElement;
+            var windows = root.FindAll(TreeScope.Children, Condition.TrueCondition);
+            for (int i = 0; i < windows.Count; i++)
+            {
+                var window = windows[i];
+                string classname;
+                try { classname = window.Current.ClassName ?? ""; }
+                catch { continue; }
+                if (!classname.Equals("Shell_TrayWnd", StringComparison.OrdinalIgnoreCase)
+                    && !classname.Equals("NotifyIconOverflowWindow", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                // Only search taskbar / overflow, never arbitrary app windows.
+                var descendants = window.FindAll(TreeScope.Descendants, Condition.TrueCondition);
+                for (int j = 0; j < Math.Min(descendants.Count, 1800); j++)
+                {
+                    nodes++;
+                    string label;
+                    try { label = descendants[j].Current.Name ?? ""; }
+                    catch { continue; }
+                    if (!label.Contains("mailbird", StringComparison.OrdinalIgnoreCase)) continue;
+                    mailbirdMatches++;
+
+                    var match = System.Text.RegularExpressions.Regex.Match(label,
+                        @"(?i)\b(?<num>\d{1,5})\s*(?:unread|new)\s*(?:e-?mails?|messages?)\b");
+                    if (!match.Success)
+                        match = System.Text.RegularExpressions.Regex.Match(label,
+                            @"(?i)\b(?:unread|new)\s*(?:e-?mails?|messages?)\s*[:(-]?\s*(?<num>\d{1,5})\b");
+                    if (match.Success && int.TryParse(match.Groups["num"].Value, out int number))
+                    {
+                        numericLabels++;
+                        counts.Add(number);
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            errors.Add(ex.GetType().Name);
+        }
+
+        string result =
+            "MailSprite 0.3 taskbar unread badge probe\n" +
+            "Taskbar accessibility elements checked: " + nodes + "\n" +
+            "Elements identifying themselves as Mailbird: " + mailbirdMatches + "\n" +
+            "Labels including a parseable unread number: " + numericLabels + "\n" +
+            "Unread counts found in accessibility labels: " +
+            (counts.Count == 0 ? "none" : string.Join(", ", counts)) + "\n";
+        if (errors.Count > 0)
+            result += "Probe error types: " + string.Join(", ", errors) + "\n";
+        result += "\nNo email text or sender/account labels are collected. " +
+                  "If no number was found, the number may only be painted as an icon.";
+        return result;
+    }
+
     public string GetDiagnosticReport()
     {
         lock (_gate)
         {
-            return "MailSprite 0.2 - detection diagnostics\n" +
+            return "MailSprite 0.3 - detection diagnostics\n" +
                 "Started: " + _start.ToString("yyyy-MM-dd HH:mm:ss") + "\n" +
                 "Mailbird native window events: " + _mailbirdEvents + "\n" +
                 "Windows shell candidate events: " + _shellEvents + "\n" +

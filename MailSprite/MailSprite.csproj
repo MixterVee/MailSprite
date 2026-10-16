@@ -8,7 +8,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>MailSprite</AssemblyName>
     <RootNamespace>MailSprite</RootNamespace>
-    <Version>0.1.0</Version>
+    <Version>0.3.0</Version>
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="UIAutomationClient" />

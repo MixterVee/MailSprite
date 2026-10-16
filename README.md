@@ -1,24 +1,22 @@
 # MailSprite
 
-Windows tray utility bringing back playful IncrediMail-style email notifications while you keep Mailbird.
+MailSprite is an experimental Windows 11 tray application that brings back playful IncrediMail-style alerts while keeping Mailbird.
 
-## Version 0.2 - diagnostic build
+## Test 3 — version 0.3
 
-- Preview **Waving Butler** and **Flying Envelope** via tray menu.
-- Optional beep and Windows speech, adjustable duration, optional autostart.
-- Experimental Mailbird detection using Windows native show/alert hooks plus UI Automation window-open events.
-- **Copy Mailbird diagnostic report** produces anonymized event metadata (window process/class, event counts); it does not collect message bodies, senders, or subjects.
+**Important safety fix:** Versions 0.1 and 0.2 could accidentally treat ordinary Mailbird windows (including opening the app) as new email notifications. Version 0.3 **disables those event-based animation triggers**, and migrates existing settings to turn the old watcher OFF. You can still run the butler and envelope animations from the tray menu.
 
-## How to test
+The next step is to establish whether the small unread counter displayed by Mailbird is exposed through Windows accessibility APIs. It may be a painted image and therefore invisible to these APIs.
 
-1. Download the latest Windows x64 build artifact from the **Actions** page. Extract and run `MailSprite.exe`.
-2. Right-click the system tray icon and verify **Test: Waving Butler** works.
-3. Turn on **Experimental: watch Mailbird pop-ups** (it's OFF by default), and leave Mailbird running with its mail pop-up notifications ON.
-4. Send a test email to your Gmail or Outlook account. Wait for Mailbird to display its notification.
-5. Right-click MailSprite's icon → **Copy Mailbird diagnostic report** and paste the text into the ChatGPT conversation.
+### Test 3 instructions
 
-This is diagnostics-first: even with both Windows event-hook types, certain Mailbird notification implementations may not expose usable events. If there are no Mailbird events, we'll need a different integration method. The app does **not** connect to Gmail or Outlook and never asks for passwords.
+1. Completely **Exit MailSprite** version 0.2 from the system tray.
+2. Download Test 3 from the latest successful [GitHub Actions build](https://github.com/MixterVee/MailSprite/actions).
+3. Unzip and run MailSprite.exe.
+4. Right-click MailSprite tray icon and choose **Probe unread badge (copies report)**. Paste the copied report into the chat.
+5. (Optional) If desired, enable **Experimental: watch Mailbird pop-ups** only to gather an additional diagnostics report. This mode will no longer show animations automatically; the watcher now only logs window events.
+6. You can still preview the butler or envelope using the Test menu items.
 
-## Build
+**This build prioritizes stopping false alerts and investigating the correct trigger, not claiming working email detection.** MailSprite never requests Gmail/Outlook credentials and does not collect email subjects or sender/account labels in probe reports.
 
-`dotnet publish MailSprite/MailSprite.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishTrimmed=false`
+For a reliable solution, the future notifier may need a dedicated provider integration or an app-supported notification event.

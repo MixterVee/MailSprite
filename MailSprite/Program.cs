@@ -84,14 +84,20 @@ internal sealed class TrayApp : IDisposable
         };
         _icon.DoubleClick += (_, _) => ShowSprite(_settings.Character);
         BuildMenu();
+        // Migration to 0.3: old detection rules caused repeated false alerts.
+        // Never automatically re-enable the watcher from 0.1/0.2 settings.
+        // User can opt in explicitly for diagnostics.
         if (_settings.WatchMailbird)
-            StartWatcher();
+        {
+            _settings.WatchMailbird = false;
+            _settings.Save();
+        }
     }
 
     private void BuildMenu()
     {
         var menu = new Forms.ContextMenuStrip();
-        menu.Items.Add("MailSprite 0.2 - Preview").Enabled = false;
+        menu.Items.Add("MailSprite 0.3 - Preview").Enabled = false;
         menu.Items.Add(new Forms.ToolStripSeparator());
         menu.Items.Add("Test: Waving Butler", null, (_, _) => ShowSprite("Butler"));
         menu.Items.Add("Test: Flying Envelope", null, (_, _) => ShowSprite("Envelope"));
@@ -138,6 +144,23 @@ internal sealed class TrayApp : IDisposable
         }) { Checked = _settings.WatchMailbird });
 
         menu.Items.Add("Copy Mailbird diagnostic report", null, (_, _) => CopyDiagnostics());
+        menu.Items.Add("Probe unread badge (copies report)", null, (_, _) =>
+        {
+            try
+            {
+                string result = MailbirdWatcher.ProbeTaskbarBadge();
+                System.Windows.Clipboard.SetText(result);
+                System.Windows.MessageBox.Show(
+                    "Taskbar badge probe copied to clipboard. Paste it into our chat. " +
+                    "The app does not collect sender names or message contents.",
+                    "MailSprite Taskbar Badge Probe");
+            }
+            catch (Exception ex)
+            {
+                System.Windows.MessageBox.Show("Could not probe badge: " + ex.Message,
+                    "MailSprite Taskbar Badge Probe");
+            }
+        });
         menu.Items.Add(new Forms.ToolStripMenuItem("Start with Windows", null, (_, _) =>
         {
             bool newValue = !_settings.StartWithWindows;
@@ -150,7 +173,7 @@ internal sealed class TrayApp : IDisposable
 
         menu.Items.Add("About / detection limitations", null, (_, _) =>
             System.Windows.MessageBox.Show(
-                "MailSprite 0.2\n\nTest Butler and Test Envelope work without email access.\n\n" +
+                "MailSprite 0.3\n\nTest Butler and Test Envelope work without email access.\n\n" +
                 "Mailbird detection is EXPERIMENTAL and observes Windows popup/show events. " +
                 "It cannot reliably observe every type of Windows notification. " +
                 "It may miss some new emails or occasionally trigger on unrelated Mailbird windows.\n\n" +
