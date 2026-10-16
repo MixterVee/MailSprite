@@ -48,6 +48,7 @@ public partial class SpriteWindow : Window
         if (_minimal || _custom || _elegant)
         {
             MessageBubble.Visibility = Visibility.Collapsed;
+            BubbleTail.Visibility = Visibility.Collapsed;
             SparkleLayer.Visibility = Visibility.Collapsed;
             Width = _custom ? 390 : 374;
             Height = _custom ? 405 : 148;
