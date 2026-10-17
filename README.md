@@ -1,6 +1,18 @@
-# MailSprite — Test 12
+# MailSprite — Test 13
 
 MailSprite uses Windows notifications to detect Mailbird messages without requiring Gmail or Outlook passwords.
+
+## Test 13 changes
+
+- **Device-specific voice clipping fix:** One stereo PCM WAV stream now contains the complete selected notification sound, a 160 ms pause, and the selected external voice WAV. This avoids destroying and reopening the Windows output session between clips.
+- **Trailing quiet buffer:** 700 ms of silence follows the complete voice WAV so some Windows audio devices do not truncate its ending.
+- **Audio format compatibility:** The supplied voice WAV is decoded/resampled to 44.1 kHz, 16-bit stereo for the combined output; mono voices and stereo chimes are both handled.
+- **Fallback:** If a WAV cannot be decoded, MailSprite still attempts the previous playback method. Windows SAPI speech continues to use the existing sequential behavior.
+- Everything else, including the five compiled notification sounds, listener, GIF options, and persistent alerts, is unchanged.
+
+### Check
+
+On both computers select the same notification sound and **Voice announcement → My recorded WAV**, then click **Test current selection**. Verify the entire voice begins after the notification sound finishes and the last word is heard. If the second computer still trims the voice, verify it's the exact same WAV file and try disabling that computer's Windows audio enhancements.
 
 ## Test 12 changes
 

@@ -136,7 +136,7 @@ internal sealed class TrayApp : IDisposable
     private void BuildMenu()
     {
         var menu = new Forms.ContextMenuStrip();
-        menu.Items.Add("MailSprite 0.12 - Stay visible").Enabled = false;
+        menu.Items.Add("MailSprite 0.13 - Stay visible").Enabled = false;
         menu.Items.Add(new Forms.ToolStripSeparator());
         // One test command always previews the active animation choice.
         menu.Items.Add("Test current selection", null,
@@ -258,7 +258,7 @@ internal sealed class TrayApp : IDisposable
 
         menu.Items.Add("About notification access", null, (_, _) =>
             System.Windows.MessageBox.Show(
-                "MailSprite 0.12\n\nUses the Windows notification listener API, not taskbar badges or email logins." +
+                "MailSprite 0.13\n\nUses the Windows notification listener API, not taskbar badges or email logins." +
                 "\n\nWindows may require an MSIX package identity for notification access. If access is " +
                 "denied or notifications remain invisible, copy the diagnostic report and we'll package the app." +
                 "\n\nMailSprite checks notification origin only. It does not read subjects, senders or bodies.",
@@ -372,11 +372,21 @@ internal sealed class TrayApp : IDisposable
             lock (_audioPlaybackLock)
             {
                 if (_disposed) return;
-                if (chimeEnabled) BuiltInSounds.PlaySync(chime);
-                if (announcement != "Off")
+                if (announcement == "Wav")
                 {
-                    if (chimeEnabled) System.Threading.Thread.Sleep(160);
-                    PlayAnnouncementSync(announcement, wavPath);
+                    // A single audio session avoids clipping at the boundary
+                    // on some output devices. It includes 160 ms between
+                    // sounds and 700 ms of silence after the COMPLETE voice.
+                    AudioSequence.Play(chimeEnabled ? chime : "Off", wavPath);
+                }
+                else
+                {
+                    if (chimeEnabled) BuiltInSounds.PlaySync(chime);
+                    if (announcement == "Windows")
+                    {
+                        if (chimeEnabled) System.Threading.Thread.Sleep(160);
+                        PlayAnnouncementSync(announcement, wavPath);
+                    }
                 }
             }
         });

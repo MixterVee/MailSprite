@@ -16,6 +16,11 @@ internal static class BuiltInSounds
     private const int SampleRate = 44100;
     private static readonly ConcurrentDictionary<string, byte[]> Cache = new();
 
+    // Expose the exact generated/bundled PCM WAV for single-stream playback.
+    // The notification chime and WAV announcement are then played by one
+    // SoundPlayer instead of separate playback sessions on different devices.
+    public static byte[] GetWav(string kind) => Cache.GetOrAdd(kind, Generate);
+
     // Standalone tray-menu samples remain asynchronous.
     public static void Play(string kind)
     {
@@ -29,7 +34,7 @@ internal static class BuiltInSounds
         if (kind == "Off") return;
         try
         {
-            byte[] data = Cache.GetOrAdd(kind, Generate);
+            byte[] data = GetWav(kind);
             using var stream = new MemoryStream(data, writable: false);
             using var player = new SoundPlayer(stream);
             player.PlaySync();
