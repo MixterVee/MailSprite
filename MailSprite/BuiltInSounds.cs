@@ -15,20 +15,25 @@ internal static class BuiltInSounds
     private const int SampleRate = 44100;
     private static readonly ConcurrentDictionary<string, byte[]> Cache = new();
 
+    // Standalone tray-menu samples remain asynchronous.
     public static void Play(string kind)
     {
         if (kind == "Off") return;
-        _ = Task.Run(() =>
+        _ = Task.Run(() => PlaySync(kind));
+    }
+
+    // Used by the ordered notification pipeline: do NOT fire-and-forget.
+    public static void PlaySync(string kind)
+    {
+        if (kind == "Off") return;
+        try
         {
-            try
-            {
-                byte[] data = Cache.GetOrAdd(kind, Generate);
-                using var stream = new MemoryStream(data, writable: false);
-                using var player = new SoundPlayer(stream);
-                player.PlaySync();
-            }
-            catch { /* Audio is optional; never block a mail notification. */ }
-        });
+            byte[] data = Cache.GetOrAdd(kind, Generate);
+            using var stream = new MemoryStream(data, writable: false);
+            using var player = new SoundPlayer(stream);
+            player.PlaySync();
+        }
+        catch { /* Audio is optional; never block a mail notification. */ }
     }
 
     private static byte[] Generate(string kind)

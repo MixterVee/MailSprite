@@ -1,8 +1,18 @@
-# MailSprite — Test 10
+# MailSprite — Test 11
 
 MailSprite uses Windows notifications to detect Mailbird messages without requiring Gmail or Outlook passwords.
 
-## Test 10 changes
+## Test 11 changes
+
+- **Sound, then voice:** Each new-mail alert or **Test current selection** plays the selected built-in notification sound **to completion**, pauses 160 ms, then plays the selected voice announcement (external WAV or Windows voice). The two cannot overlap.
+- **Built-in sounds remain selectable:** Soft Chime, Paper Flick, Clear Bell, and Off are still compiled into MailSprite. Selecting one from the sound menu continues to preview that sound only.
+- **External WAV announcements remain supported:** Choose your own announcement under **Voice announcement → Choose WAV announcement...**. The voice is optional; it plays by itself if notification sound is Off.
+- **Concurrent alerts are serialized:** Alerts arriving while audio is playing queue sound/voice pairs instead of talking over one another.
+- No changes to the confirmed Windows notification listener, custom animation GIF playback, or persistent waiting alerts.
+
+To test: select a notification sound and a recorded WAV announcement; choose **Test current selection**. The chime should finish before the recording begins. Repeat with Notification sound set to Off and with Voice announcement set to Off.
+
+## Previous Test 10 changes
 
 - **Single preview action:** The tray menu now has one **Test current selection** entry rather than separate entries for each style. It previews the animation currently checked under **Default animation**, including a user-imported custom GIF.
 - **Closed-envelope icon:** The app uses the supplied blue closed-envelope artwork, converted to a transparent Windows multi-size `.ico` (16, 32, 48 pixels). It appears as MailSprite's tray icon and is embedded as the Windows executable icon, instead of the generic blue Information symbol.
@@ -13,7 +23,7 @@ MailSprite uses Windows notifications to detect Mailbird messages without requir
 1. Fully exit the old MailSprite via its tray menu. Download the `MailSprite-Windows-x64` ZIP from the latest successful [GitHub Actions build](https://github.com/MixterVee/MailSprite/actions) and extract the executable.
 2. Start the new `MailSprite.exe` and check the tray for the blue closed envelope.
 3. Right-click the envelope and choose **Default animation** → any built-in style or custom animated GIF (if you've imported one).
-4. Select **Test current selection**. Only the selected animation should appear; if **Keep visible until cleared** is enabled, click the preview or choose **Clear preview**.
+4. Select **Test current selection**. The selected animation and ordered audio sequence should play; if if **Keep visible until cleared** is enabled, click the preview or choose **Clear preview**.
 5. Send a test email to confirm automatic Mailbird notifications still work.
 
 **Windows icon cache:** Explorer sometimes caches icons by executable name and path. If the file or taskbar icon looks unchanged after replacing an old build, first launch the new build from a fresh extracted folder. This does not affect the tray icon, which is loaded from the app resource.

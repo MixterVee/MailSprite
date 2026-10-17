@@ -83,6 +83,9 @@ internal sealed class TrayApp : IDisposable
     private SpriteWindow? _preview;
     private DateTime _lastNotice = DateTime.MinValue;
     private bool _disposed;
+    // Serialize sounds and WAV/voice announcements so concurrent alerts
+    // cannot overlap each other or reverse playback order.
+    private readonly object _audioPlaybackLock = new();
 
     public TrayApp(System.Windows.Application app)
     {
@@ -133,7 +136,7 @@ internal sealed class TrayApp : IDisposable
     private void BuildMenu()
     {
         var menu = new Forms.ContextMenuStrip();
-        menu.Items.Add("MailSprite 0.10 - Stay visible").Enabled = false;
+        menu.Items.Add("MailSprite 0.11 - Stay visible").Enabled = false;
         menu.Items.Add(new Forms.ToolStripSeparator());
         // One test command always previews the active animation choice.
         menu.Items.Add("Test current selection", null,
@@ -253,7 +256,7 @@ internal sealed class TrayApp : IDisposable
 
         menu.Items.Add("About notification access", null, (_, _) =>
             System.Windows.MessageBox.Show(
-                "MailSprite 0.10\n\nUses the Windows notification listener API, not taskbar badges or email logins." +
+                "MailSprite 0.11\n\nUses the Windows notification listener API, not taskbar badges or email logins." +
                 "\n\nWindows may require an MSIX package identity for notification access. If access is " +
                 "denied or notifications remain invisible, copy the diagnostic report and we'll package the app." +
                 "\n\nMailSprite checks notification origin only. It does not read subjects, senders or bodies.",
@@ -316,26 +319,24 @@ internal sealed class TrayApp : IDisposable
         catch { }
     }
 
-    private void Speak()
+    // Called on the same background audio worker after the notification chime.
+    // Keep this synchronous: a second Task.Run would start the voice too early.
+    private static void PlayAnnouncementSync(string mode, string wavPath)
     {
-        if (_settings.AnnouncementMode == "Off") return;
-        if (_settings.AnnouncementMode == "Wav")
+        if (mode == "Wav")
         {
-            var path = _settings.RecordedWavPath;
-            _ = Task.Run(() => PlayWav(path));
+            PlayWav(wavPath);
             return;
         }
-        _ = Task.Run(() =>
+        if (mode != "Windows") return;
+        try
         {
-            try
-            {
-                var type = Type.GetTypeFromProgID("SAPI.SpVoice");
-                if (type is null) return;
-                dynamic voice = Activator.CreateInstance(type)!;
-                voice.Speak("You've got mail!", 0);
-            }
-            catch { }
-        });
+            var type = Type.GetTypeFromProgID("SAPI.SpVoice");
+            if (type is null) return;
+            dynamic voice = Activator.CreateInstance(type)!;
+            voice.Speak("You've got mail!", 0);
+        }
+        catch { /* Voice is optional; it must not interrupt the alert. */ }
     }
 
     private void SetCharacter(string character)
@@ -354,8 +355,29 @@ internal sealed class TrayApp : IDisposable
 
     private void PlaySound()
     {
-        if (_settings.Sound) BuiltInSounds.Play(_settings.SoundStyle);
-        Speak();
+        // Snapshot selections when the notification arrives, so changes made
+        // in the tray menu during playback affect the NEXT alert only.
+        bool chimeEnabled = _settings.Sound && _settings.SoundStyle != "Off";
+        string chime = _settings.SoundStyle;
+        string announcement = _settings.AnnouncementMode;
+        string wavPath = _settings.RecordedWavPath;
+        if (!chimeEnabled && announcement == "Off") return;
+
+        _ = Task.Run(() =>
+        {
+            // Await the chime's entire WAV, then announce. A small natural
+            // pause makes the two parts sound intentional, not simultaneous.
+            lock (_audioPlaybackLock)
+            {
+                if (_disposed) return;
+                if (chimeEnabled) BuiltInSounds.PlaySync(chime);
+                if (announcement != "Off")
+                {
+                    if (chimeEnabled) System.Threading.Thread.Sleep(160);
+                    PlayAnnouncementSync(announcement, wavPath);
+                }
+            }
+        });
     }
 
     private void ShowPreview(string kind)
