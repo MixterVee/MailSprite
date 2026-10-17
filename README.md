@@ -1,6 +1,15 @@
-# MailSprite — Test 11
+# MailSprite — Test 12
 
 MailSprite uses Windows notifications to detect Mailbird messages without requiring Gmail or Outlook passwords.
+
+## Test 12 changes
+
+- **Two additional built-in notification sounds:**
+  - **Slow clanging bell (three dings)**: a 2.7-second metallic bell based on the earlier slow-clang effect
+  - **Chime (your recording)**: the actual chime audio supplied by the project owner, embedded into the executable (about 7.7 seconds)
+- Both appear directly under **Notification sound** alongside Off, Soft Chime, Paper Flick, and Clear Bell. Neither requires browsing for a sound file.
+- The MP3 chime is decoded to WAV in memory on first playback (using NAudio), then cached. All sounds use the existing blocking WAV playback sequence: notification sound, short pause, then optional external WAV voice announcement.
+- No changes to automatic Mailbird notification detection, GIF selection, or persistent alerts.
 
 ## Test 11 changes
 

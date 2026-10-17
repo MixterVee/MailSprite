@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.IO;
 using System.Media;
 using System.Text;
+using NAudio.Wave;
 
 namespace MailSprite;
 
@@ -38,10 +39,16 @@ internal static class BuiltInSounds
 
     private static byte[] Generate(string kind)
     {
+        // The supplied chime recording is compiled into the EXE. It is
+        // decoded to PCM WAV once, then played synchronously with SoundPlayer
+        // so the selected WAV announcement begins only after it finishes.
+        if (kind == "UserChime") return DecodeIncludedChime();
+
         double duration = kind switch
         {
             "PaperFlick" => 0.48,
             "ClearBell" => 1.10,
+            "SlowClang" => 2.70,
             _ => 0.92
         };
         int count = (int)(duration * SampleRate);
@@ -52,7 +59,16 @@ internal static class BuiltInSounds
         {
             double t = (double)i / SampleRate;
             double signal;
-            if (kind == "PaperFlick")
+            if (kind == "SlowClang")
+            {
+                // Three mellow metallic strikes: synthesized from the same
+                // fundamental and inharmonic partials as the earlier slow
+                // bell effect. Keep the ringing tails between strikes.
+                signal = SlowBellStrike(t, 0.20, 0.48)
+                    + SlowBellStrike(t, 1.10, 0.52)
+                    + SlowBellStrike(t, 1.88, 0.66);
+            }
+            else if (kind == "PaperFlick")
             {
                 // Soft paper rustle with a quiet low-pitched tap.
                 noiseSeed ^= noiseSeed << 13;
@@ -127,4 +143,37 @@ internal static class BuiltInSounds
         double overtone = 0.24 * Math.Sin(2 * Math.PI * frequency * 2 * t);
         return (fundamental + overtone) * strength * attack * falloff;
     }
+    private static byte[] DecodeIncludedChime()
+    {
+        using Stream compressed =
+            typeof(BuiltInSounds).Assembly.GetManifestResourceStream("MailSprite.Assets.Chime.mp3")
+            ?? throw new FileNotFoundException("The bundled chime is missing.");
+        using var reader = new Mp3FileReader(compressed);
+        using var wav = new MemoryStream();
+        WaveFileWriter.WriteWavFileToStream(wav, reader);
+        return wav.ToArray();
+    }
+
+    private static double SlowBellStrike(double time, double start, double volume)
+    {
+        if (time < start) return 0;
+        double t = time - start;
+        double attack = 1 - Math.Exp(-90 * t);
+        double decay = Math.Exp(-2.8 * t);
+        double shimmer = Math.Exp(-6.5 * t);
+        // Deliberately inharmonic frequencies produce bell-like resonance
+        // instead of the pure sine of a digital beep.
+        double resonance =
+            Math.Sin(2 * Math.PI * 280.0 * t) * 0.26
+            + Math.Sin(2 * Math.PI * 558.7 * t) * 0.38
+            + Math.Sin(2 * Math.PI * 843.1 * t) * 0.19
+            + Math.Sin(2 * Math.PI * 1126.5 * t) * 0.11
+            + Math.Sin(2 * Math.PI * 669.5 * t) * 0.13
+            + Math.Sin(2 * Math.PI * 1343.7 * t) * 0.055
+            + Math.Sin(2 * Math.PI * 1693.0 * t) * 0.025;
+        double transient = Math.Sin(2 * Math.PI * 2312.5 * t)
+            * shimmer * 0.04;
+        return volume * attack * decay * (resonance + transient);
+    }
+
 }
