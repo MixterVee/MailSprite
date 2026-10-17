@@ -21,11 +21,12 @@ internal static class BuiltInSounds
     // SoundPlayer instead of separate playback sessions on different devices.
     public static byte[] GetWav(string kind) => Cache.GetOrAdd(kind, Generate);
 
-    // Standalone tray-menu samples remain asynchronous.
+    // Standalone tray-menu samples use the SAME device warm-up as an
+    // incoming-mail alert. Otherwise previews could clip on some laptops.
     public static void Play(string kind)
     {
         if (kind == "Off") return;
-        _ = Task.Run(() => PlaySync(kind));
+        _ = Task.Run(() => AudioSequence.Play(kind, ""));
     }
 
     // Used by the ordered notification pipeline: do NOT fire-and-forget.

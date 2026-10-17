@@ -15,6 +15,10 @@ internal static class AudioSequence
 {
     private const int OutputRate = 44100;
     private const int OutputChannels = 2;
+    // Allow laptop/USB/Bluetooth sound devices to wake before the first
+    // notification transient. A near-inaudible pilot prevents some devices
+    // from treating the warm-up as an empty/silent stream.
+    private const int LeadMilliseconds = 1000;
     private const int GapMilliseconds = 160;
     private const int TailMilliseconds = 700;
     private static readonly WaveFormat OutputFormat = new(OutputRate, 16, OutputChannels);
@@ -30,6 +34,9 @@ internal static class AudioSequence
             using var audio = new MemoryStream();
             using (var writer = new WaveFileWriter(audio, OutputFormat))
             {
+                // Test 14: prime the output BEFORE the first audible chime.
+                // Test 13 already protected the voice's ending with a tail.
+                AppendDeviceWarmup(writer, LeadMilliseconds);
                 if (hasNotification)
                 {
                     using var builtinStream = new MemoryStream(BuiltInSounds.GetWav(notification), writable: false);
@@ -123,6 +130,29 @@ internal static class AudioSequence
 
     private static short ToPcm16(float value) =>
         (short)Math.Round(Math.Clamp(value, -1.0f, 1.0f) * 32767.0f);
+
+    private static void AppendDeviceWarmup(WaveFileWriter destination, int milliseconds)
+    {
+        int frames = OutputRate * milliseconds / 1000;
+        var bytes = new byte[frames * OutputChannels * sizeof(short)];
+        double fadeFrames = OutputRate * 0.08;
+
+        for (int i = 0; i < frames; i++)
+        {
+            // -57 dBFS 240 Hz pilot: practically silent, but actual samples
+            // keep some sound drivers from ignoring an all-zero preroll.
+            double fade = Math.Clamp(Math.Min(i, frames - 1 - i) / fadeFrames, 0.0, 1.0);
+            short sample = (short)Math.Round(
+                Math.Sin(2 * Math.PI * 240 * i / OutputRate) * 46 * fade);
+            int offset = i * 4;
+            bytes[offset] = (byte)sample;
+            bytes[offset + 1] = (byte)(sample >> 8);
+            bytes[offset + 2] = bytes[offset];
+            bytes[offset + 3] = bytes[offset + 1];
+        }
+
+        destination.Write(bytes, 0, bytes.Length);
+    }
 
     private static void AppendSilence(WaveFileWriter destination, int milliseconds)
     {

@@ -1,6 +1,16 @@
-# MailSprite — Test 13
+# MailSprite — Test 14
 
 MailSprite uses Windows notifications to detect Mailbird messages without requiring Gmail or Outlook passwords.
+
+## Test 14 changes
+
+- **Protect the beginning of the notification sound:** A 1-second near-silent device warm-up is inserted before the first sound, so slow-to-wake laptop, USB and Bluetooth audio devices have time to start playing. This matches Test 13's 700 ms tail protection for the voice.
+- **No voice overlap:** The existing uninterrupted sound -> 160 ms gap -> external WAV voice -> 700 ms tail playback order is unchanged.
+- **Previews protected too:** Picking a sound under **Notification sound** now plays it with the same warm-up buffer, so choosing a chime doesn't clip its first notes on a sleepy output device.
+- **Other announcement modes:** The notification portion of Windows system-voice announcements receives the same warm-up.
+- Existing built-in sounds, user chime, animations, Mailbird notifications and settings are unchanged.
+
+Test the same sound and announcement on both computers. Expect a brief ~1 second delay before hearing the notification. If the first notes are still missing on the second laptop, investigate audio driver enhancements or Bluetooth/HDMI output switching.
 
 ## Test 13 changes
 
