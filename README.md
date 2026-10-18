@@ -1,6 +1,19 @@
-# MailSprite — Test 18
+# MailSprite — Test 19
 
-MailSprite monitors Windows notifications from a selected email client (BlueMail, Wino Mail, or Mailbird), without requiring Gmail or Outlook passwords.
+MailSprite monitors Windows notifications from a selected email client (Spark Desktop, eM Client, BlueMail, Wino Mail, or Mailbird), without requiring Gmail or Outlook passwords.
+
+## Test 19 changes
+
+- **Two new notification sources:** **Spark Desktop** and **eM Client** are available under **Email monitoring → Email client**, based on the application names shown in Windows Notification Logger. Spark's shown message is a Google account-access alert *about eM Client*; its **source application is Spark Desktop**. The eM Client screenshot shows an ordinary new-email notification from eM Client.
+- **Five clients, one at a time:** Spark Desktop, eM Client, BlueMail, Wino Mail, and Mailbird. Only the selected source triggers MailSprite, preventing duplicate alerts when several email programs access the same accounts.
+- **Switch without reboot:** Selecting another client restarts the Windows notification listener, saves the choice, and ignores old notifications already on screen. New notifications from that selected app can trigger the existing animated alert, notification sound, and WAV voice.
+- **Privacy:** Matching uses only the Windows notification app display name/ID. MailSprite does not extract email addresses, message bodies, subjects, or senders.
+- **Thunderbird not added yet:** No Thunderbird Windows notification was observed; it may require notification configuration or testing before an identity match can be verified.
+- **Nothing else changed:** The simplified tray menu, notification sounds, audio playback protection, GIF animations, persistent alert, and startup retries remain intact.
+
+### Test
+
+Install Test 19. Under **Email monitoring → Email client**, select **eM Client** or **Spark Desktop**. Send a NEW message to trigger a Windows notification, and verify the MailSprite animation and audio occur. If the Windows Notification Logger sees the app but MailSprite does not respond, use **Email monitoring → Copy diagnostic report**. Each client is intentionally selected separately.
 
 ## Test 18 changes
 

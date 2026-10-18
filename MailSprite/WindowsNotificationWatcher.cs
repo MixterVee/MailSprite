@@ -47,12 +47,14 @@ internal sealed class WindowsNotificationWatcher : IDisposable
     {
         _dispatcher = dispatcher;
         _onMailToast = onMailToast;
-        _monitoredClient = monitoredClient is "WinoMail" or "BlueMail"
+        _monitoredClient = monitoredClient is "WinoMail" or "BlueMail" or "Spark" or "EmClient"
             ? monitoredClient : "Mailbird";
         _clientName = _monitoredClient switch
         {
             "WinoMail" => "Wino Mail",
             "BlueMail" => "BlueMail Email",
+            "Spark" => "Spark Desktop",
+            "EmClient" => "eM Client",
             _ => "Mailbird"
         };
         _recoverStartup = recoverStartup;
@@ -229,6 +231,23 @@ internal sealed class WindowsNotificationWatcher : IDisposable
 
     private bool MatchesSelectedClient(string displayName, string appId)
     {
+        if (_monitoredClient == "Spark")
+        {
+            // The user's Windows Notification Logger names the source
+            // "Spark Desktop", regardless of the email message text.
+            return displayName.Contains("Spark Desktop", StringComparison.OrdinalIgnoreCase) ||
+                appId.Contains("SparkDesktop", StringComparison.OrdinalIgnoreCase) ||
+                appId.Contains("Readdle.Spark", StringComparison.OrdinalIgnoreCase);
+        }
+
+        if (_monitoredClient == "EmClient")
+        {
+            // Notification Logger shows "eM Client" as the app source.
+            return displayName.Contains("eM Client", StringComparison.OrdinalIgnoreCase) ||
+                appId.Contains("eMClient", StringComparison.OrdinalIgnoreCase) ||
+                appId.Contains("eM.Client", StringComparison.OrdinalIgnoreCase);
+        }
+
         if (_monitoredClient == "BlueMail")
         {
             // Notification Logger identifies the Windows toast origin as
@@ -262,7 +281,7 @@ internal sealed class WindowsNotificationWatcher : IDisposable
 
     public string GetDiagnosticReport()
     {
-        return "MailSprite Test 18 - Windows notification listener\n" +
+        return "MailSprite Test 19 - Windows notification listener\n" +
             "Selected email client: " + _clientName + "\n" +
             "Access status: " + _access + "\n" +
             "App packaging: " + _identity + "\n" +
