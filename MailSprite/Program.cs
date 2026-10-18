@@ -314,9 +314,9 @@ internal sealed class TrayApp : IDisposable
         options.DropDownItems.Add(new Forms.ToolStripSeparator());
         options.DropDownItems.Add("About MailSprite / notification access", null, (_, _) =>
             System.Windows.MessageBox.Show(
-                "MailSprite 0.16\\n\\nMonitors Mailbird Windows notifications without reading email content." +
-                "\\n\\nMonitoring support for other email clients will be added after identifying how they publish Windows notifications." +
-                "\\n\\nWindows may require a packaged identity or explicit permission for notification access.",
+                "MailSprite 0.16\n\nMonitors Mailbird Windows notifications without reading email content." +
+                "\n\nMonitoring support for other email clients will be added after identifying how they publish Windows notifications." +
+                "\n\nWindows may require a packaged identity or explicit permission for notification access.",
                 "MailSprite", MessageBoxButton.OK, MessageBoxImage.Information));
         menu.Items.Add(options);
 
