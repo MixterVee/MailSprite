@@ -158,7 +158,7 @@ internal sealed class TrayApp : IDisposable
     private void BuildMenu()
     {
         var menu = new Forms.ContextMenuStrip();
-        menu.Items.Add("MailSprite 0.17").Enabled = false;
+        menu.Items.Add("MailSprite 0.18").Enabled = false;
         menu.Items.Add(new Forms.ToolStripSeparator());
 
         // Two primary actions remain easy to reach.
@@ -277,7 +277,12 @@ internal sealed class TrayApp : IDisposable
 
         // Monitor one chosen client; two clients accessing the same inbox
         // would otherwise produce duplicate sound and voice announcements.
-        var clientLabel = _settings.MonitoredClient == "WinoMail" ? "Wino Mail" : "Mailbird";
+        var clientLabel = _settings.MonitoredClient switch
+        {
+            "WinoMail" => "Wino Mail",
+            "BlueMail" => "BlueMail Email",
+            _ => "Mailbird"
+        };
         var monitor = new Forms.ToolStripMenuItem("Email monitoring (" + clientLabel + ")");
         var monitorStatus = new Forms.ToolStripMenuItem("") { Enabled = false };
         monitor.DropDownItems.Add(monitorStatus);
@@ -286,12 +291,16 @@ internal sealed class TrayApp : IDisposable
                 ? "Status: Monitoring " + clientLabel
                 : "Status: Not monitoring";
         var clientMenu = new Forms.ToolStripMenuItem("Email client");
+        clientMenu.DropDownItems.Add(new Forms.ToolStripMenuItem("BlueMail", null,
+            async (_, _) => await SetMonitoredClientAsync("BlueMail"))
+        { Checked = _settings.MonitoredClient == "BlueMail" });
         clientMenu.DropDownItems.Add(new Forms.ToolStripMenuItem("Wino Mail", null,
             async (_, _) => await SetMonitoredClientAsync("WinoMail"))
         { Checked = _settings.MonitoredClient == "WinoMail" });
         clientMenu.DropDownItems.Add(new Forms.ToolStripMenuItem("Mailbird", null,
             async (_, _) => await SetMonitoredClientAsync("Mailbird"))
-        { Checked = _settings.MonitoredClient != "WinoMail" });
+        { Checked = _settings.MonitoredClient != "WinoMail" &&
+            _settings.MonitoredClient != "BlueMail" });
         monitor.DropDownItems.Add(clientMenu);
         monitor.DropDownItems.Add(new Forms.ToolStripSeparator());
         monitor.DropDownItems.Add("Start / allow notifications...", null,
@@ -323,8 +332,8 @@ internal sealed class TrayApp : IDisposable
         options.DropDownItems.Add(new Forms.ToolStripSeparator());
         options.DropDownItems.Add("About MailSprite / notification access", null, (_, _) =>
             System.Windows.MessageBox.Show(
-                "MailSprite 0.17\n\nMonitors notifications from the selected email client without reading message content." +
-                "\n\nChoose Mailbird or Wino Mail under Email monitoring > Email client." +
+                "MailSprite 0.18\n\nMonitors notifications from the selected email client without reading message content." +
+                "\n\nChoose Mailbird, Wino Mail, or BlueMail under Email monitoring > Email client." +
                 "\n\nWindows may require a packaged identity or explicit permission for notification access.",
                 "MailSprite", MessageBoxButton.OK, MessageBoxImage.Information));
         menu.Items.Add(options);
@@ -564,7 +573,7 @@ internal sealed class TrayApp : IDisposable
 
     private async Task SetMonitoredClientAsync(string client)
     {
-        if (client != "Mailbird" && client != "WinoMail") return;
+        if (client != "Mailbird" && client != "WinoMail" && client != "BlueMail") return;
         if (_settings.MonitoredClient == client) return;
 
         _settings.MonitoredClient = client;
@@ -645,10 +654,15 @@ internal sealed class TrayApp : IDisposable
     {
         try
         {
-            string report = "MailSprite Test 17 - Startup status\n" +
+            string report = "MailSprite Test 18 - Startup status\n" +
                 "MailSprite started: " + _startedLocal.ToString("yyyy-MM-dd HH:mm:ss") + "\n" +
                 "Start with Windows setting: " + _settings.StartWithWindows + "\n" +
-                "Selected email client: " + (_settings.MonitoredClient == "WinoMail" ? "Wino Mail" : "Mailbird") + "\n" +
+                "Selected email client: " + (_settings.MonitoredClient switch
+                {
+                    "WinoMail" => "Wino Mail",
+                    "BlueMail" => "BlueMail Email",
+                    _ => "Mailbird"
+                }) + "\n" +
                 "Automatic notification monitoring: " + _settings.AutoMonitor + "\n" +
                 "Notification listener active: " + (_notificationWatcher?.IsWatching == true) + "\n" +
                 "Automatic startup listener attempts: " + _startupListenerAttempts + "\n\n" +

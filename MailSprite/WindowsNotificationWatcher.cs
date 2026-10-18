@@ -47,8 +47,14 @@ internal sealed class WindowsNotificationWatcher : IDisposable
     {
         _dispatcher = dispatcher;
         _onMailToast = onMailToast;
-        _monitoredClient = monitoredClient == "WinoMail" ? "WinoMail" : "Mailbird";
-        _clientName = _monitoredClient == "WinoMail" ? "Wino Mail" : "Mailbird";
+        _monitoredClient = monitoredClient is "WinoMail" or "BlueMail"
+            ? monitoredClient : "Mailbird";
+        _clientName = _monitoredClient switch
+        {
+            "WinoMail" => "Wino Mail",
+            "BlueMail" => "BlueMail Email",
+            _ => "Mailbird"
+        };
         _recoverStartup = recoverStartup;
         _pollTimer = new DispatcherTimer(DispatcherPriority.Background, dispatcher)
         {
@@ -223,6 +229,17 @@ internal sealed class WindowsNotificationWatcher : IDisposable
 
     private bool MatchesSelectedClient(string displayName, string appId)
     {
+        if (_monitoredClient == "BlueMail")
+        {
+            // Notification Logger identifies the Windows toast origin as
+            // "BlueMail Email"; compact app ID variants are also accepted.
+            // No access to notification subject, sender, or body is needed.
+            return displayName.Contains("BlueMail Email", StringComparison.OrdinalIgnoreCase) ||
+                displayName.Equals("BlueMail", StringComparison.OrdinalIgnoreCase) ||
+                appId.Contains("BlueMail", StringComparison.OrdinalIgnoreCase) ||
+                appId.Contains("Blue.Mail", StringComparison.OrdinalIgnoreCase);
+        }
+
         if (_monitoredClient == "WinoMail")
         {
             // Notification Logger shows the Wino app's display name as
@@ -245,7 +262,7 @@ internal sealed class WindowsNotificationWatcher : IDisposable
 
     public string GetDiagnosticReport()
     {
-        return "MailSprite Test 17 - Windows notification listener\n" +
+        return "MailSprite Test 18 - Windows notification listener\n" +
             "Selected email client: " + _clientName + "\n" +
             "Access status: " + _access + "\n" +
             "App packaging: " + _identity + "\n" +

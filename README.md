@@ -1,6 +1,18 @@
-# MailSprite — Test 17
+# MailSprite — Test 18
 
-MailSprite monitors Windows notifications from a selected email client (Wino Mail or Mailbird), without requiring Gmail or Outlook passwords.
+MailSprite monitors Windows notifications from a selected email client (BlueMail, Wino Mail, or Mailbird), without requiring Gmail or Outlook passwords.
+
+## Test 18 changes
+
+- **BlueMail support:** Select **Email monitoring → Email client → BlueMail**. Match Windows notifications labeled **BlueMail Email**, as observed in Notification Logger, plus compact BlueMail app-ID names.
+- **Three selectable clients:** BlueMail, Wino Mail, and Mailbird are supported individually. Monitoring only the selected one prevents duplicate alerts when two email programs receive the same message.
+- **Immediate changeover:** Selecting BlueMail saves the preference and restarts the Windows notification listener. Previously visible notifications aren't re-announced as new mail when switching.
+- **Source diagnostics:** The listener's diagnostic report identifies the selected client as **BlueMail Email** and reports observed notification counts. No email subjects, senders or bodies are collected.
+- Existing audio (including the device warm-up, full WAV voice sequencing), custom GIFs, persistent alerts, and Windows-startup handling remain unchanged.
+
+### Test BlueMail
+
+Install Test 18, choose **Email monitoring → Email client → BlueMail**, and send yourself a **new** email so BlueMail generates another Windows notification. The notification shown in your screenshot is a Google security alert; it proves the sender identity but not yet that ordinary new-email toasts behave identically. If MailSprite doesn't react to a new email, use **Email monitoring → Copy diagnostic report** and paste it into the chat.
 
 ## Test 17 changes
 
