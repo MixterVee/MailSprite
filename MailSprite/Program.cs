@@ -86,10 +86,31 @@ internal sealed class TrayApp : IDisposable
     // Serialize sounds and WAV/voice announcements so concurrent alerts
     // cannot overlap each other or reverse playback order.
     private readonly object _audioPlaybackLock = new();
+    private readonly System.Windows.Threading.DispatcherTimer _startupListenerRetryTimer;
+    private readonly DateTime _startedLocal = DateTime.Now;
+    private int _startupListenerAttempts;
+    private bool _startingListener;
 
     public TrayApp(System.Windows.Application app)
     {
         _app = app;
+        _startupListenerRetryTimer = new System.Windows.Threading.DispatcherTimer
+        {
+            Interval = TimeSpan.FromSeconds(12)
+        };
+        _startupListenerRetryTimer.Tick += async (_, _) =>
+        {
+            // Retry only during an automatic startup session, not after the
+            // user deliberately selects "Stop notification listener".
+            if (_disposed || !_settings.AutoMonitor ||
+                _notificationWatcher?.IsWatching == true ||
+                _startupListenerAttempts >= 12)
+            {
+                _startupListenerRetryTimer.Stop();
+                return;
+            }
+            if (!_startingListener) await EnableWindowsNotifications(silent: true);
+        };
         // Use the same user-selected closed-envelope artwork for both the
         // tray icon and the EXE's Windows taskbar/file icon.
         using (var stream = typeof(TrayApp).Assembly.GetManifestResourceStream("MailSprite.Assets.MailSprite.ico")
@@ -136,7 +157,7 @@ internal sealed class TrayApp : IDisposable
     private void BuildMenu()
     {
         var menu = new Forms.ContextMenuStrip();
-        menu.Items.Add("MailSprite 0.14 - Stay visible").Enabled = false;
+        menu.Items.Add("MailSprite 0.15 - Stay visible").Enabled = false;
         menu.Items.Add(new Forms.ToolStripSeparator());
         // One test command always previews the active animation choice.
         menu.Items.Add("Test current selection", null,
@@ -240,6 +261,7 @@ internal sealed class TrayApp : IDisposable
             (_, _) => CopyDiagnostics());
         menu.Items.Add("Stop notification listener", null, (_, _) =>
         {
+            _startupListenerRetryTimer.Stop();
             _settings.AutoMonitor = false;
             _settings.Save();
             StopWatcher();
@@ -258,7 +280,7 @@ internal sealed class TrayApp : IDisposable
 
         menu.Items.Add("About notification access", null, (_, _) =>
             System.Windows.MessageBox.Show(
-                "MailSprite 0.14\n\nUses the Windows notification listener API, not taskbar badges or email logins." +
+                "MailSprite 0.15\n\nUses the Windows notification listener API, not taskbar badges or email logins." +
                 "\n\nWindows may require an MSIX package identity for notification access. If access is " +
                 "denied or notifications remain invisible, copy the diagnostic report and we'll package the app." +
                 "\n\nMailSprite checks notification origin only. It does not read subjects, senders or bodies.",
@@ -484,46 +506,63 @@ internal sealed class TrayApp : IDisposable
 
     private async Task EnableWindowsNotifications(bool silent = false)
     {
+        if (_startingListener) return;
         if (_notificationWatcher?.IsWatching == true)
         {
-            System.Windows.MessageBox.Show("Windows notification listener is already running.", "MailSprite");
+            if (!silent)
+                System.Windows.MessageBox.Show(
+                    "Windows notification listener is already running.", "MailSprite");
+            _startupListenerRetryTimer.Stop();
             return;
         }
-        StopWatcher();
-        var watcher = new WindowsNotificationWatcher(_app.Dispatcher, () =>
+
+        _startingListener = true;
+        try
         {
-            if ((DateTime.UtcNow - _lastNotice).TotalSeconds < 10) return;
-            _lastNotice = DateTime.UtcNow;
-            IncomingMail();
-        });
-        _notificationWatcher = watcher;
-        bool enabled = await watcher.RequestAccessAndStartAsync();
-        if (!enabled)
-        {
-            _settings.AutoMonitor = false;
-            _settings.Save();
-            if (silent)
+            if (silent) _startupListenerAttempts++;
+            StopWatcher();
+            var watcher = new WindowsNotificationWatcher(_app.Dispatcher, () =>
             {
-                _icon.ShowBalloonTip(5000, "MailSprite",
-                    "Notification listener did not start. Enable it from the tray menu.",
-                    Forms.ToolTipIcon.Warning);
+                if ((DateTime.UtcNow - _lastNotice).TotalSeconds < 10) return;
+                _lastNotice = DateTime.UtcNow;
+                IncomingMail();
+            });
+            _notificationWatcher = watcher;
+            bool enabled = await watcher.RequestAccessAndStartAsync();
+            if (_disposed || !ReferenceEquals(_notificationWatcher, watcher)) return;
+
+            if (!enabled)
+            {
+                if (silent)
+                {
+                    // A notification service may not yet be available during
+                    // Windows login. Preserve AutoMonitor and retry rather
+                    // than permanently disabling notification detection.
+                    if (_settings.AutoMonitor && _startupListenerAttempts < 12)
+                        _startupListenerRetryTimer.Start();
+                    else
+                        _startupListenerRetryTimer.Stop();
+                    return;
+                }
+                System.Windows.MessageBox.Show(
+                    "Windows has not started the notification listener. No emails will trigger animations." +
+                    "\n\nSelect 'Copy notification listener diagnostic report' for details.",
+                    "MailSprite Listener Setup");
                 return;
             }
-            System.Windows.MessageBox.Show(
-                "Windows has not started the notification listener. No emails will trigger animations." +
-                "\n\nPlease select 'Copy notification listener diagnostic report' and paste the result here." +
-                "\n\nIf Windows requires an app package, we'll use a properly permissioned MSIX build.",
-                "MailSprite Listener Setup");
-        }
-        else
-        {
+
+            _startupListenerRetryTimer.Stop();
             _settings.AutoMonitor = true;
             _settings.Save();
-            if (silent) return;
-            System.Windows.MessageBox.Show(
-                "Notification listener started. Send a NEW email after this dialog closes." +
-                "\n\nIf you don't see the animation, copy the diagnostic report.",
-                "MailSprite Listener");
+            if (!silent)
+                System.Windows.MessageBox.Show(
+                    "Notification listener started. Send a NEW email after this dialog closes." +
+                    "\n\nIf you don't see an animation, copy the diagnostic report.",
+                    "MailSprite Listener");
+        }
+        finally
+        {
+            _startingListener = false;
         }
     }
 
@@ -531,9 +570,14 @@ internal sealed class TrayApp : IDisposable
     {
         try
         {
-            string report = _notificationWatcher?.GetDiagnosticReport() ??
-                "MailSprite Test 5: listener hasn't been enabled yet. Select " +
-                "'Enable Windows notification listener (permission)' first.";
+            string report = "MailSprite Test 15 - Startup status\n" +
+                "MailSprite started: " + _startedLocal.ToString("yyyy-MM-dd HH:mm:ss") + "\n" +
+                "Start with Windows setting: " + _settings.StartWithWindows + "\n" +
+                "Automatic notification monitoring: " + _settings.AutoMonitor + "\n" +
+                "Notification listener active: " + (_notificationWatcher?.IsWatching == true) + "\n" +
+                "Automatic startup listener attempts: " + _startupListenerAttempts + "\n\n" +
+                (_notificationWatcher?.GetDiagnosticReport() ??
+                "Listener hasn't been enabled. Select 'Enable Windows notification listener (permission)' first.");
             System.Windows.Clipboard.SetText(report);
             System.Windows.MessageBox.Show(
                 "Privacy-safe diagnostic report copied. Paste it into our chat.",
@@ -583,6 +627,7 @@ internal sealed class TrayApp : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        _startupListenerRetryTimer.Stop();
         StopWatcher();
         _sprite?.Close();
         _preview?.Close();

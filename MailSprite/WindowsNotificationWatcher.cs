@@ -16,6 +16,12 @@ internal sealed class WindowsNotificationWatcher : IDisposable
     private readonly Action _onMailbirdToast;
     private readonly DispatcherTimer _pollTimer;
     private readonly HashSet<string> _seen = new();
+    // Avoid announcing the same toast multiple times if Windows notification
+    // access is temporarily unavailable and the watcher is restarted.
+    private static readonly HashSet<string> SeenThisProcess = new();
+    private static readonly TimeSpan StartupCatchup = TimeSpan.FromMinutes(2);
+    private int _startupRecovered;
+    private int _startupOlderIgnored;
     private readonly Queue<string> _recent = new();
     private UserNotificationListener? _listener;
     private bool _disposed;
@@ -158,15 +164,30 @@ internal sealed class WindowsNotificationWatcher : IDisposable
                     notification.CreationTime.ToUnixTimeMilliseconds();
                 currentlyActive.Add(key);
                 if (!_seen.Add(key)) continue;
+                if (!SeenThisProcess.Add(key)) continue;
 
                 _newMailbird++;
                 if (!_initialized)
                 {
-                    Record("Existing Mailbird notification detected (baseline; ignored).");
-                    continue;
-                }
+                    // Windows may deliver a startup Mailbird toast *before*
+                    // MailSprite's notification listener is ready. Recover
+                    // only very recent toasts; older notifications from
+                    // earlier sessions are still baseline-ignored.
+                    var age = DateTimeOffset.UtcNow - notification.CreationTime;
+                    if (age < TimeSpan.Zero || age > StartupCatchup)
+                    {
+                        _startupOlderIgnored++;
+                        Record("Older existing Mailbird toast (baseline; ignored).");
+                        continue;
+                    }
 
-                Record("NEW Mailbird notification detected by Windows listener.");
+                    _startupRecovered++;
+                    Record("Recent Mailbird toast recovered during startup.");
+                }
+                else
+                {
+                    Record("NEW Mailbird notification detected by Windows listener.");
+                }
                 if ((DateTime.UtcNow - _lastAlertUtc).TotalSeconds >= 10)
                 {
                     _lastAlertUtc = DateTime.UtcNow;
@@ -203,7 +224,7 @@ internal sealed class WindowsNotificationWatcher : IDisposable
 
     public string GetDiagnosticReport()
     {
-        return "MailSprite Test 5 - Windows notification listener\n" +
+        return "MailSprite Test 15 - Windows notification listener\n" +
             "Access status: " + _access + "\n" +
             "App packaging: " + _identity + "\n" +
             "NotificationChanged: " + _eventSubscription + "\n" +
@@ -212,6 +233,8 @@ internal sealed class WindowsNotificationWatcher : IDisposable
             "Current Windows notifications visible to listener: " + _visibleNotifications + "\n" +
             "Mailbird notifications observed in scans: " + _totalMailbirdMatches + "\n" +
             "Unique Mailbird notifications since starting: " + _newMailbird + "\n" +
+            "Recent startup toasts recovered: " + _startupRecovered + "\n" +
+            "Older startup toasts safely ignored: " + _startupOlderIgnored + "\n" +
             "Windows API errors: " + _errors + "\n\n" +
             "Recent events (NO mail content, addresses or subjects):\n" +
             string.Join("\n", _recent);

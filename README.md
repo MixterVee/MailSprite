@@ -1,6 +1,17 @@
-# MailSprite — Test 14
+# MailSprite — Test 15
 
 MailSprite uses Windows notifications to detect Mailbird messages without requiring Gmail or Outlook passwords.
+
+## Test 15 changes
+
+- **Recover startup mail:** Before Test 15, the notification listener silently discarded every Mailbird toast already visible at the moment monitoring started. It now recovers *recent* toasts created within the past two minutes, while safely ignoring older notification history. This resolves the race in which Mailbird receives email before MailSprite finishes Windows initialization.
+- **Automatic listener retries:** Windows notification services sometimes aren't ready during boot. When auto-monitoring was already enabled, MailSprite now retries at 12-second intervals (up to 12 startup attempts). A failed early connection no longer permanently turns off the saved monitoring preference.
+- **Diagnostics reveal startup state:** The existing **Copy notification listener diagnostic report** tray command includes MailSprite's own start time, whether auto-monitoring was configured, whether the listener is active, automatic attempt count, and recovered / ignored toast counts.
+- **No changes to Test 14 sound/voice sequencing, custom GIFs, mailbox and bell animations, or persistent alerts.** Only notification detection initialization changes.
+
+### How to test
+
+Install and launch Test 15. Right-click the tray icon and ensure **Start with Windows** is enabled; use **Enable Windows notification listener (permission)** once to enable and remember monitoring. Confirm an incoming mail triggers MailSprite normally. Reboot and observe whether an early Windows Mailbird toast now creates the MailSprite animation. If not, check whether the MailSprite tray icon itself is running and paste the new diagnostic report. Be aware that moving MailSprite.exe after enabling autostart can leave Windows pointing to the previous executable path.
 
 ## Test 14 changes
 
