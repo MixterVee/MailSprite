@@ -1,6 +1,15 @@
-# MailSprite — Test 15
+# MailSprite — Test 16
 
 MailSprite uses Windows notifications to detect Mailbird messages without requiring Gmail or Outlook passwords.
+
+## Test 16 changes
+
+- **Simplified tray menu:** Primary actions `Test current selection` and `Clear alert / preview` stay visible. The main menus are now Animation, Alert duration, Notification sound, Voice announcement, Email monitoring (Mailbird), Options, and Exit.
+- **Combined alert duration modes:** `Alert duration` has the mutually exclusive choices `Keep visible until cleared`, `4 seconds (auto-hide)`, `7 seconds (auto-hide)`, and `10 seconds (auto-hide)`. Switching to a time turns persistent display OFF automatically; switching back retains the previously used seconds. Existing alerts update right away.
+- **Animation cleanup:** Built-in styles, custom GIF import, and placement controls are grouped under Animation > Position rather than scattered through the top menu.
+- **Monitoring cleanup:** Listener start/stop and diagnostics are grouped under Email monitoring (Mailbird), with the current active/not-active status displayed upon opening. Start with Windows and About are under Options.
+- **All audio settings kept:** Existing Soft chime, Paper flick, Clear bell, Slow clanging bell, bundled chime and external WAV voice announcements continue unchanged, including the complete sound-then-voice playback sequence.
+- **Email-client compatibility next:** The current watcher deliberately remains Mailbird-specific to preserve working behavior. When a replacement email client is chosen, verify its Windows notification application identity and extend source matching without reading email content.
 
 ## Test 15 changes
 

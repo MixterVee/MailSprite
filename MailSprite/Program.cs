@@ -157,70 +157,81 @@ internal sealed class TrayApp : IDisposable
     private void BuildMenu()
     {
         var menu = new Forms.ContextMenuStrip();
-        menu.Items.Add("MailSprite 0.15 - Stay visible").Enabled = false;
+        menu.Items.Add("MailSprite 0.16").Enabled = false;
         menu.Items.Add(new Forms.ToolStripSeparator());
-        // One test command always previews the active animation choice.
+
+        // Two primary actions remain easy to reach.
         menu.Items.Add("Test current selection", null,
             (_, _) => ShowPreview(_settings.Character));
-        menu.Items.Add("Clear preview", null, (_, _) => _preview?.Clear());
+        menu.Items.Add("Clear alert / preview", null, (_, _) =>
+        {
+            _preview?.Clear();
+            ClearWaitingAlert();
+        });
         menu.Items.Add(new Forms.ToolStripSeparator());
 
-        var character = new Forms.ToolStripMenuItem("Default animation");
-        character.DropDownItems.Add(new Forms.ToolStripMenuItem("Minimal alert (recommended)", null, (_, _) => SetCharacter("Minimal"))
-        { Checked = _settings.Character == "Minimal" });
-        character.DropDownItems.Add(new Forms.ToolStripMenuItem("Custom animated GIF", null, (_, _) => SetCharacter("Custom"))
-        { Checked = _settings.Character == "Custom", Enabled = File.Exists(_settings.CustomGifPath) });
-        character.DropDownItems.Add(new Forms.ToolStripMenuItem("Envelope Swoop (original)", null, (_, _) => SetCharacter("Swoop"))
-        { Checked = _settings.Character == "Swoop" });
-        character.DropDownItems.Add(new Forms.ToolStripMenuItem("Mailbox Flag (original)", null, (_, _) => SetCharacter("Mailbox"))
-        { Checked = _settings.Character == "Mailbox" });
-
-
-        menu.Items.Add(character);
-        menu.Items.Add("Choose custom animated GIF...", null, (_, _) => ChooseGif());
-
-        var duration = new Forms.ToolStripMenuItem("Timed alert duration (if auto-hide enabled)");
-        foreach (int seconds in new[] { 4, 7, 10 })
+        var animation = new Forms.ToolStripMenuItem("Animation");
+        foreach (var item in new (string Value, string Name)[]
         {
-            int current = seconds;
-            duration.DropDownItems.Add(new Forms.ToolStripMenuItem(current + " seconds", null, (_, _) =>
+            ("Minimal", "Minimal alert"),
+            ("Swoop", "Envelope swoop"),
+            ("Mailbox", "Mailbox flag"),
+            ("Custom", "Custom animated GIF")
+        })
+        {
+            var selected = item.Value;
+            animation.DropDownItems.Add(new Forms.ToolStripMenuItem(item.Name, null,
+                (_, _) => SetCharacter(selected))
             {
-                _settings.Seconds = current;
-                SaveAndRefresh();
-            }) { Checked = _settings.Seconds == current });
+                Checked = _settings.Character == selected,
+                Enabled = selected != "Custom" || File.Exists(_settings.CustomGifPath)
+            });
         }
-        menu.Items.Add(duration);
+        animation.DropDownItems.Add(new Forms.ToolStripSeparator());
+        animation.DropDownItems.Add("Choose custom GIF...", null,
+            (_, _) => ChooseGif());
 
-        var placement = new Forms.ToolStripMenuItem("Animation position");
+        // Placement belongs with animation, not as its own top-level menu.
+        var placement = new Forms.ToolStripMenuItem("Position");
         foreach (var choice in new (string Value, string Label)[]
         {
-            ("LeftOfNotification", "Left of Windows notifications (recommended)"),
+            ("LeftOfNotification", "Left of Windows notification"),
             ("BottomLeft", "Bottom left"),
             ("TopLeft", "Top left"),
             ("TopRight", "Top right")
         })
         {
             var position = choice.Value;
-            placement.DropDownItems.Add(new Forms.ToolStripMenuItem(choice.Label, null, (_, _) =>
-            {
-                _settings.Placement = position;
-                SaveAndRefresh();
-                if (_sprite?.IsVisible == true)
-                    RefreshWaitingAlert();
-                else ShowPreview(_settings.Character);
-            }) { Checked = _settings.Placement == position });
+            placement.DropDownItems.Add(new Forms.ToolStripMenuItem(choice.Label, null,
+                (_, _) =>
+                {
+                    _settings.Placement = position;
+                    SaveAndRefresh();
+                    if (_sprite?.IsVisible == true)
+                        RefreshWaitingAlert();
+                    else ShowPreview(_settings.Character);
+                })
+            { Checked = _settings.Placement == position });
         }
-        menu.Items.Add(placement);
+        animation.DropDownItems.Add(placement);
+        menu.Items.Add(animation);
 
-        menu.Items.Add(new Forms.ToolStripMenuItem("Keep visible until cleared", null, (_, _) =>
+        // One mutually exclusive choice: either persist or automatically hide
+        // after a specified number of seconds.
+        var duration = new Forms.ToolStripMenuItem("Alert duration");
+        duration.DropDownItems.Add(new Forms.ToolStripMenuItem(
+            "Keep visible until cleared", null, (_, _) => SetAlertDuration(null))
+        { Checked = _settings.KeepVisibleUntilCleared });
+        duration.DropDownItems.Add(new Forms.ToolStripSeparator());
+        foreach (int seconds in new[] { 4, 7, 10 })
         {
-            _settings.KeepVisibleUntilCleared = !_settings.KeepVisibleUntilCleared;
-            _settings.Save();
-            RefreshWaitingAlert();
-            BuildMenu();
-        }) { Checked = _settings.KeepVisibleUntilCleared });
-        menu.Items.Add("Clear waiting mail alert", null, (_, _) => ClearWaitingAlert());
-        menu.Items.Add(new Forms.ToolStripSeparator());
+            int value = seconds;
+            duration.DropDownItems.Add(new Forms.ToolStripMenuItem(
+                value + " seconds (auto-hide)", null, (_, _) => SetAlertDuration(value))
+            { Checked = !_settings.KeepVisibleUntilCleared && _settings.Seconds == value });
+        }
+        menu.Items.Add(duration);
+
         var soundMenu = new Forms.ToolStripMenuItem("Notification sound");
         foreach (var item in new (string Value, string Name)[]
         {
@@ -245,21 +256,38 @@ internal sealed class TrayApp : IDisposable
 
         var speechMenu = new Forms.ToolStripMenuItem("Voice announcement");
         speechMenu.DropDownItems.Add(new Forms.ToolStripMenuItem("Off", null,
-            (_, _) => SetSpeechMode("Off")) { Checked = _settings.AnnouncementMode == "Off" });
+            (_, _) => SetSpeechMode("Off"))
+        { Checked = _settings.AnnouncementMode == "Off" });
         speechMenu.DropDownItems.Add(new Forms.ToolStripMenuItem("Windows system voice", null,
-            (_, _) => SetSpeechMode("Windows")) { Checked = _settings.AnnouncementMode == "Windows" });
+            (_, _) => SetSpeechMode("Windows"))
+        { Checked = _settings.AnnouncementMode == "Windows" });
         speechMenu.DropDownItems.Add(new Forms.ToolStripMenuItem("My recorded WAV", null,
-            (_, _) => SetSpeechMode("Wav")) { Checked = _settings.AnnouncementMode == "Wav",
-            Enabled = File.Exists(_settings.RecordedWavPath) });
+            (_, _) => SetSpeechMode("Wav"))
+        {
+            Checked = _settings.AnnouncementMode == "Wav",
+            Enabled = File.Exists(_settings.RecordedWavPath)
+        });
+        speechMenu.DropDownItems.Add(new Forms.ToolStripSeparator());
         speechMenu.DropDownItems.Add("Choose WAV announcement...", null,
             (_, _) => ChooseWav());
         menu.Items.Add(speechMenu);
+
         menu.Items.Add(new Forms.ToolStripSeparator());
-        menu.Items.Add("Enable Windows notification listener (permission)", null,
+
+        // Listener currently identifies Mailbird Windows toast notifications.
+        // When the user chooses a new client, adapt the source matching
+        // separately after verifying that client's notification identity.
+        var monitor = new Forms.ToolStripMenuItem("Email monitoring (Mailbird)");
+        var monitorStatus = new Forms.ToolStripMenuItem("") { Enabled = false };
+        monitor.DropDownItems.Add(monitorStatus);
+        monitor.DropDownOpening += (_, _) =>
+            monitorStatus.Text = _notificationWatcher?.IsWatching == true
+                ? "Status: Monitoring"
+                : "Status: Not monitoring";
+        monitor.DropDownItems.Add(new Forms.ToolStripSeparator());
+        monitor.DropDownItems.Add("Start / allow notifications...", null,
             async (_, _) => await EnableWindowsNotifications());
-        menu.Items.Add("Copy notification listener diagnostic report", null,
-            (_, _) => CopyDiagnostics());
-        menu.Items.Add("Stop notification listener", null, (_, _) =>
+        monitor.DropDownItems.Add("Stop monitoring", null, (_, _) =>
         {
             _startupListenerRetryTimer.Stop();
             _settings.AutoMonitor = false;
@@ -267,29 +295,50 @@ internal sealed class TrayApp : IDisposable
             StopWatcher();
             System.Windows.MessageBox.Show("Notification monitoring stopped.", "MailSprite");
         });
-        menu.Items.Add(new Forms.ToolStripSeparator());
-        menu.Items.Add(new Forms.ToolStripMenuItem("Start with Windows", null, (_, _) =>
-        {
-            bool newValue = !_settings.StartWithWindows;
-            if (SetStartup(newValue))
-            {
-                _settings.StartWithWindows = newValue;
-                SaveAndRefresh();
-            }
-        }) { Checked = _settings.StartWithWindows });
+        monitor.DropDownItems.Add("Copy diagnostic report", null,
+            (_, _) => CopyDiagnostics());
+        menu.Items.Add(monitor);
 
-        menu.Items.Add("About notification access", null, (_, _) =>
+        var options = new Forms.ToolStripMenuItem("Options");
+        options.DropDownItems.Add(new Forms.ToolStripMenuItem("Start with Windows", null,
+            (_, _) =>
+            {
+                bool newValue = !_settings.StartWithWindows;
+                if (SetStartup(newValue))
+                {
+                    _settings.StartWithWindows = newValue;
+                    SaveAndRefresh();
+                }
+            })
+        { Checked = _settings.StartWithWindows });
+        options.DropDownItems.Add(new Forms.ToolStripSeparator());
+        options.DropDownItems.Add("About MailSprite / notification access", null, (_, _) =>
             System.Windows.MessageBox.Show(
-                "MailSprite 0.15\n\nUses the Windows notification listener API, not taskbar badges or email logins." +
-                "\n\nWindows may require an MSIX package identity for notification access. If access is " +
-                "denied or notifications remain invisible, copy the diagnostic report and we'll package the app." +
-                "\n\nMailSprite checks notification origin only. It does not read subjects, senders or bodies.",
+                "MailSprite 0.16\\n\\nMonitors Mailbird Windows notifications without reading email content." +
+                "\\n\\nMonitoring support for other email clients will be added after identifying how they publish Windows notifications." +
+                "\\n\\nWindows may require a packaged identity or explicit permission for notification access.",
                 "MailSprite", MessageBoxButton.OK, MessageBoxImage.Information));
+        menu.Items.Add(options);
+
         menu.Items.Add(new Forms.ToolStripSeparator());
         menu.Items.Add("Exit MailSprite", null, (_, _) => _app.Shutdown());
+
         var old = _icon.ContextMenuStrip;
         _icon.ContextMenuStrip = menu;
         old?.Dispose();
+    }
+
+    private void SetAlertDuration(int? seconds)
+    {
+        // The persistent and timed modes are mutually exclusive.
+        _settings.KeepVisibleUntilCleared = !seconds.HasValue;
+        if (seconds.HasValue) _settings.Seconds = seconds.Value;
+        _settings.Save();
+
+        // An already-visible alert should immediately use the new behavior.
+        RefreshWaitingAlert();
+        _preview?.Clear();
+        BuildMenu();
     }
 
     private void SetSpeechMode(string mode)
