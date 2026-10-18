@@ -43,6 +43,7 @@ internal sealed class MailSpriteSettings
     public string CustomGifPath { get; set; } = "";
     public string AnnouncementMode { get; set; } = "Off";
     public string SoundStyle { get; set; } = "SoftChime";
+    public string MonitoredClient { get; set; } = "Mailbird";
 
     private static string SettingsPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MailSprite", "settings.json");
@@ -157,7 +158,7 @@ internal sealed class TrayApp : IDisposable
     private void BuildMenu()
     {
         var menu = new Forms.ContextMenuStrip();
-        menu.Items.Add("MailSprite 0.16").Enabled = false;
+        menu.Items.Add("MailSprite 0.17").Enabled = false;
         menu.Items.Add(new Forms.ToolStripSeparator());
 
         // Two primary actions remain easy to reach.
@@ -274,16 +275,24 @@ internal sealed class TrayApp : IDisposable
 
         menu.Items.Add(new Forms.ToolStripSeparator());
 
-        // Listener currently identifies Mailbird Windows toast notifications.
-        // When the user chooses a new client, adapt the source matching
-        // separately after verifying that client's notification identity.
-        var monitor = new Forms.ToolStripMenuItem("Email monitoring (Mailbird)");
+        // Monitor one chosen client; two clients accessing the same inbox
+        // would otherwise produce duplicate sound and voice announcements.
+        var clientLabel = _settings.MonitoredClient == "WinoMail" ? "Wino Mail" : "Mailbird";
+        var monitor = new Forms.ToolStripMenuItem("Email monitoring (" + clientLabel + ")");
         var monitorStatus = new Forms.ToolStripMenuItem("") { Enabled = false };
         monitor.DropDownItems.Add(monitorStatus);
         monitor.DropDownOpening += (_, _) =>
             monitorStatus.Text = _notificationWatcher?.IsWatching == true
-                ? "Status: Monitoring"
+                ? "Status: Monitoring " + clientLabel
                 : "Status: Not monitoring";
+        var clientMenu = new Forms.ToolStripMenuItem("Email client");
+        clientMenu.DropDownItems.Add(new Forms.ToolStripMenuItem("Wino Mail", null,
+            async (_, _) => await SetMonitoredClientAsync("WinoMail"))
+        { Checked = _settings.MonitoredClient == "WinoMail" });
+        clientMenu.DropDownItems.Add(new Forms.ToolStripMenuItem("Mailbird", null,
+            async (_, _) => await SetMonitoredClientAsync("Mailbird"))
+        { Checked = _settings.MonitoredClient != "WinoMail" });
+        monitor.DropDownItems.Add(clientMenu);
         monitor.DropDownItems.Add(new Forms.ToolStripSeparator());
         monitor.DropDownItems.Add("Start / allow notifications...", null,
             async (_, _) => await EnableWindowsNotifications());
@@ -314,8 +323,8 @@ internal sealed class TrayApp : IDisposable
         options.DropDownItems.Add(new Forms.ToolStripSeparator());
         options.DropDownItems.Add("About MailSprite / notification access", null, (_, _) =>
             System.Windows.MessageBox.Show(
-                "MailSprite 0.16\n\nMonitors Mailbird Windows notifications without reading email content." +
-                "\n\nMonitoring support for other email clients will be added after identifying how they publish Windows notifications." +
+                "MailSprite 0.17\n\nMonitors notifications from the selected email client without reading message content." +
+                "\n\nChoose Mailbird or Wino Mail under Email monitoring > Email client." +
                 "\n\nWindows may require a packaged identity or explicit permission for notification access.",
                 "MailSprite", MessageBoxButton.OK, MessageBoxImage.Information));
         menu.Items.Add(options);
@@ -553,7 +562,24 @@ internal sealed class TrayApp : IDisposable
         }
     }
 
-    private async Task EnableWindowsNotifications(bool silent = false)
+    private async Task SetMonitoredClientAsync(string client)
+    {
+        if (client != "Mailbird" && client != "WinoMail") return;
+        if (_settings.MonitoredClient == client) return;
+
+        _settings.MonitoredClient = client;
+        _settings.Save();
+
+        // Switching must not replay already-visible notifications.
+        _startupListenerRetryTimer.Stop();
+        StopWatcher();
+        _startupListenerAttempts = 0;
+        _lastNotice = DateTime.MinValue;
+        BuildMenu();
+        await EnableWindowsNotifications(silent: false, recoverStartup: false);
+    }
+
+    private async Task EnableWindowsNotifications(bool silent = false, bool recoverStartup = true)
     {
         if (_startingListener) return;
         if (_notificationWatcher?.IsWatching == true)
@@ -575,7 +601,7 @@ internal sealed class TrayApp : IDisposable
                 if ((DateTime.UtcNow - _lastNotice).TotalSeconds < 10) return;
                 _lastNotice = DateTime.UtcNow;
                 IncomingMail();
-            });
+            }, _settings.MonitoredClient, recoverStartup);
             _notificationWatcher = watcher;
             bool enabled = await watcher.RequestAccessAndStartAsync();
             if (_disposed || !ReferenceEquals(_notificationWatcher, watcher)) return;
@@ -619,9 +645,10 @@ internal sealed class TrayApp : IDisposable
     {
         try
         {
-            string report = "MailSprite Test 15 - Startup status\n" +
+            string report = "MailSprite Test 17 - Startup status\n" +
                 "MailSprite started: " + _startedLocal.ToString("yyyy-MM-dd HH:mm:ss") + "\n" +
                 "Start with Windows setting: " + _settings.StartWithWindows + "\n" +
+                "Selected email client: " + (_settings.MonitoredClient == "WinoMail" ? "Wino Mail" : "Mailbird") + "\n" +
                 "Automatic notification monitoring: " + _settings.AutoMonitor + "\n" +
                 "Notification listener active: " + (_notificationWatcher?.IsWatching == true) + "\n" +
                 "Automatic startup listener attempts: " + _startupListenerAttempts + "\n\n" +

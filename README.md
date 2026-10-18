@@ -1,6 +1,18 @@
-# MailSprite — Test 16
+# MailSprite — Test 17
 
-MailSprite uses Windows notifications to detect Mailbird messages without requiring Gmail or Outlook passwords.
+MailSprite monitors Windows notifications from a selected email client (Wino Mail or Mailbird), without requiring Gmail or Outlook passwords.
+
+## Test 17 changes
+
+- **Wino Mail notifications:** You can choose Wino Mail or Mailbird from **Email monitoring > Email client**. Wino Mail matches the Windows notification display name shown by the Notification Logger, with app-ID variants. It does not read subject, sender or mail content.
+- **Switch at runtime:** Selecting a different client saves the setting and restarts the listener. Previously displayed notifications are not replayed when switching; new ones trigger the usual animations and sound-then-voice sequence.
+- **No duplicate alerts from two mail clients:** Only the selected client is monitored. Older installations remain on Mailbird until changed.
+- **Diagnostics:** The report now labels the selected client and shows its notification detection counts. If Wino Mail notifies Windows but not MailSprite, copy the report for troubleshooting.
+- All GIFs, sounds, external WAV voice announcements, persistent alerts, and startup monitoring retries remain unchanged.
+
+### Test Wino Mail
+
+Exit the old MailSprite, install Test 17, then select **Email monitoring (Mailbird) > Email client > Wino Mail**. The monitoring menu should now say **Wino Mail**. Send a *new* email and check that MailSprite triggers when Wino Mail delivers a Windows notification. If it does not, select **Email monitoring > Copy diagnostic report**.
 
 ## Test 16 changes
 
