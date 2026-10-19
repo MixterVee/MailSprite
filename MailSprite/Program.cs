@@ -158,7 +158,7 @@ internal sealed class TrayApp : IDisposable
     private void BuildMenu()
     {
         var menu = new Forms.ContextMenuStrip();
-        menu.Items.Add("MailSprite 0.19").Enabled = false;
+        menu.Items.Add("MailSprite 0.20").Enabled = false;
         menu.Items.Add(new Forms.ToolStripSeparator());
 
         // Two primary actions remain easy to reach.
@@ -241,6 +241,7 @@ internal sealed class TrayApp : IDisposable
             ("PaperFlick", "Paper flick"),
             ("ClearBell", "Clear bell"),
             ("SlowClang", "Slow clanging bell (three dings)"),
+            ("AirMailDove", "Air Mail Dove (WAV V2)"),
             ("UserChime", "Chime (your recording)")
         })
         {
@@ -250,7 +251,8 @@ internal sealed class TrayApp : IDisposable
                 _settings.SoundStyle = value;
                 _settings.Sound = value != "Off";
                 SaveAndRefresh();
-                if (_settings.Sound) BuiltInSounds.Play(value);
+                if (_settings.Sound && (value != "AirMailDove" || File.Exists(Path.Combine(AppContext.BaseDirectory, "MailSprite_AirMail_Dove_Natural_Flutter_Coo_Ding_v2.wav")))) BuiltInSounds.Play(value);
+                else if (value == "AirMailDove") System.Windows.MessageBox.Show("Put MailSprite_AirMail_Dove_Natural_Flutter_Coo_Ding_v2.wav in the same folder as MailSprite.exe.", "Air Mail Dove sound");
             }) { Checked = (_settings.Sound ? _settings.SoundStyle : "Off") == value });
         }
         menu.Items.Add(soundMenu);
@@ -339,7 +341,7 @@ internal sealed class TrayApp : IDisposable
         options.DropDownItems.Add(new Forms.ToolStripSeparator());
         options.DropDownItems.Add("About MailSprite / notification access", null, (_, _) =>
             System.Windows.MessageBox.Show(
-                "MailSprite 0.19\n\nMonitors notifications from the selected email client without reading message content." +
+                "MailSprite 0.20\n\nMonitors notifications from the selected email client without reading message content." +
                 "\n\nChoose Mailbird, Wino Mail, BlueMail, Spark Desktop, or eM Client under Email monitoring > Email client." +
                 "\n\nWindows may require a packaged identity or explicit permission for notification access.",
                 "MailSprite", MessageBoxButton.OK, MessageBoxImage.Information));
@@ -661,7 +663,7 @@ internal sealed class TrayApp : IDisposable
     {
         try
         {
-            string report = "MailSprite Test 19 - Startup status\n" +
+            string report = "MailSprite Test 20 - Startup status\n" +
                 "MailSprite started: " + _startedLocal.ToString("yyyy-MM-dd HH:mm:ss") + "\n" +
                 "Start with Windows setting: " + _settings.StartWithWindows + "\n" +
                 "Selected email client: " + (_settings.MonitoredClient switch

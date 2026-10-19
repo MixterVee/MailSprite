@@ -49,6 +49,7 @@ internal static class BuiltInSounds
         // decoded to PCM WAV once, then played synchronously with SoundPlayer
         // so the selected WAV announcement begins only after it finishes.
         if (kind == "UserChime") return DecodeIncludedChime();
+        if (kind == "AirMailDove") return LoadAirMailDove();
 
         double duration = kind switch
         {
@@ -136,6 +137,17 @@ internal static class BuiltInSounds
             foreach (short sample in wave) writer.Write(sample);
         }
         return output.ToArray();
+    }
+
+    private static byte[] LoadAirMailDove()
+    {
+        // The exact user-approved Dove V2 WAV, stored alongside MailSprite.exe.
+        // Keep the sequence from Test 14: one uninterrupted notification + voice.
+        var path = Path.Combine(AppContext.BaseDirectory,
+            "MailSprite_AirMail_Dove_Natural_Flutter_Coo_Ding_v2.wav");
+        if (!File.Exists(path))
+            throw new FileNotFoundException("Air Mail Dove sound not installed", path);
+        return File.ReadAllBytes(path);
     }
 
     private static double WarmNote(double time, double frequency,

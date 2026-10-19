@@ -1,6 +1,12 @@
-# MailSprite — Test 19
+# MailSprite — Test 20
 
 MailSprite monitors Windows notifications from a selected email client (Spark Desktop, eM Client, BlueMail, Wino Mail, or Mailbird), without requiring Gmail or Outlook passwords.
+
+## Test 20 changes
+
+- **Air Mail Dove sound (approved V2):** Added **Air Mail Dove (WAV V2)** under Notification sound. To preserve the exact approved recording, put `MailSprite_AirMail_Dove_Natural_Flutter_Coo_Ding_v2.wav` beside `MailSprite.exe`. The source GitHub integration used for this build cannot transfer WAV binaries into the repository. The sound is loaded on demand from that exact local filename; no synthesis or substitution occurs.
+- **One-stream playback:** The WAV uses the existing sound-then-voice pipeline, including Test 14 device warm-up and trailing silence.
+- **No other behavior changes:** Five email clients, alert duration, animations, Windows startup monitoring, and voice playback are unchanged.
 
 ## Test 19 changes
 
