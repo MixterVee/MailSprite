@@ -1,0 +1,38 @@
+name: eM Client tray starter Windows x64
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'helpers/eMClientTrayStarter/**'
+      - '.github/workflows/emclient-tray-starter.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Restore
+        run: dotnet restore helpers/eMClientTrayStarter/eMClientTrayStarter.csproj
+      - name: Publish self-contained Windows x64 EXE
+        run: dotnet publish helpers/eMClientTrayStarter/eMClientTrayStarter.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishTrimmed=false -p:EnableCompressionInSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none -o tray-starter-output
+      - name: Copy instructions and uninstaller
+        shell: pwsh
+        run: |
+          Copy-Item helpers/eMClientTrayStarter/README.txt tray-starter-output/README.txt
+          Copy-Item helpers/eMClientTrayStarter/Uninstall.cmd tray-starter-output/Uninstall.cmd
+      - name: Upload Windows app
+        uses: actions/upload-artifact@v4
+        with:
+          name: eMClient-Tray-Starter-Windows-x64
+          path: |
+            tray-starter-output/eMClientTrayStarter.exe
+            tray-starter-output/README.txt
+            tray-starter-output/Uninstall.cmd
+          if-no-files-found: error
